@@ -1,0 +1,29 @@
+* {
+  box-sizing: border-box;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 32rpx;
+  background: #f5f7fb;
+}
+
+.primary-button {
+  min-height: 88rpx;
+  border-radius: 8rpx;
+  border: 0;
+  background: #2563eb;
+  color: #fff;
+  font-size: 30rpx;
+  line-height: 88rpx;
+}
+
+.secondary-button {
+  min-height: 80rpx;
+  border-radius: 8rpx;
+  border: 2rpx solid #c9d4e5;
+  background: #fff;
+  color: #22304a;
+  font-size: 28rpx;
+  line-height: 80rpx;
+}
