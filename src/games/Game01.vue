@@ -12,6 +12,7 @@
     <image class="cloud cloud-left" src="/static/games/game-01/clound3.png" mode="aspectFit" />
     <image class="cloud cloud-right" src="/static/games/game-01/clound1.png" mode="aspectFit" />
     <image class="cloud cloud-far" src="/static/games/game-01/clound4.png" mode="aspectFit" />
+    <image class="cloud cloud-mid" src="/static/games/game-01/clound5.png" mode="aspectFit" />
 
     <view v-if="loading" class="state-panel">
       <text class="state-text">加载单词数据...</text>
@@ -22,6 +23,32 @@
     </view>
 
     <view v-else-if="currentWord" class="card-stage">
+      <view class="blackboard-stage">
+        <image class="blackboard-bg" src="/static/games/game-01/blackboard.png" mode="scaleToFill" />
+
+        <view class="board-content">
+          <view class="letter-row">
+            <text
+              v-for="(letter, index) in wordLetters"
+              :key="`${currentWord.id}-${index}`"
+              class="letter"
+              :class="letterClass"
+              :style="{ color: letterColors[index % letterColors.length], animationDelay: `${index * 70}ms` }"
+            >{{ letter }}</text>
+          </view>
+
+          <view v-if="phonetic" class="phonetic-pill" @tap="playAudio">
+            <text class="speaker-icon">🔊</text>
+            <text class="phonetic-text">{{ phonetic }}</text>
+          </view>
+
+          <view class="meaning-row" :class="swapClass">
+            <text v-if="currentWord.partOfSpeech" class="pos-text">{{ currentWord.partOfSpeech }}</text>
+            <text class="meaning-text">{{ primaryMeaning }}</text>
+          </view>
+        </view>
+      </view>
+
       <view class="progress-row">
         <view class="count-pill">
           <text class="count-text">{{ currentIndex + 1 }}/{{ words.length }}</text>
@@ -34,78 +61,36 @@
         />
       </view>
 
-      <view class="main-card">
-        <image class="card-bg" src="/static/games/game-01/main_bg.png" mode="scaleToFill" />
-
-        <view class="card-content">
-          <!-- 英文单词：字母逐个弹跳入场 -->
-          <view class="letter-row">
-            <text
-              v-for="(letter, index) in wordLetters"
-              :key="`${currentWord.id}-${index}`"
-              class="letter"
-              :class="letterClass"
-              :style="{ color: letterColors[index % letterColors.length], animationDelay: `${index * 70}ms` }"
-            >{{ letter }}</text>
+      <view class="picture-stage" @tap="playAudio">
+        <view class="halo" :class="{ 'halo-on': glowing }" />
+        <template v-if="glowing">
+          <view class="glow-ring ring-1" />
+          <view class="glow-ring ring-2" />
+          <text
+            v-for="(sparkle, index) in sparkles"
+            :key="index"
+            class="sparkle"
+            :style="sparkle.style"
+          >{{ sparkle.icon }}</text>
+          <view class="sound-waves">
+            <view class="wave wave-1" />
+            <view class="wave wave-2" />
+            <view class="wave wave-3" />
           </view>
+        </template>
 
-          <view v-if="phonetic" class="phonetic-pill" @tap="playAudio">
-            <text class="phonetic-text">🔊 {{ phonetic }}</text>
-          </view>
+        <image class="picture-note" :class="[swapClass, { 'note-glow': glowing }]" src="/static/games/game-01/card.png" mode="aspectFit" />
+        <image
+          class="robot"
+          :class="{ 'robot-bounce': glowing }"
+          src="/static/games/game-01/robot.png"
+          mode="aspectFit"
+        />
+      </view>
 
-          <!-- 机器人 + 实物便签：点击发光并发音 -->
-          <view class="picture-stage" @tap="playAudio">
-            <view class="halo" :class="{ 'halo-on': glowing }" />
-            <template v-if="glowing">
-              <view class="glow-ring ring-1" />
-              <view class="glow-ring ring-2" />
-              <text
-                v-for="(sparkle, index) in sparkles"
-                :key="index"
-                class="sparkle"
-                :style="sparkle.style"
-              >{{ sparkle.icon }}</text>
-              <view class="sound-waves">
-                <view class="wave wave-1" />
-                <view class="wave wave-2" />
-                <view class="wave wave-3" />
-              </view>
-            </template>
-
-            <view class="speech-bubble" :class="{ talking: glowing }">
-              <text class="speech-text">{{ glowing ? '跟我读～' : '点我听发音' }}</text>
-            </view>
-
-            <view class="picture-note" :class="[swapClass, { 'note-glow': glowing }]">
-              <image class="note-bg" src="/static/games/game-01/card_bg.png" mode="scaleToFill" />
-              <image class="word-picture" :src="wordImageSrc" mode="aspectFit" />
-            </view>
-
-            <image
-              class="robot"
-              :class="{ 'robot-bounce': glowing }"
-              src="/static/games/game-01/robot.png"
-              mode="aspectFit"
-            />
-          </view>
-
-          <!-- 中文释义 -->
-          <view class="meaning-row" :class="swapClass">
-            <text v-if="currentWord.partOfSpeech" class="pos-text">{{ currentWord.partOfSpeech }}</text>
-            <text class="meaning-text">{{ primaryMeaning }}</text>
-          </view>
-
-          <view class="card-actions">
-            <view class="action-item" @tap="playAudio">
-              <image class="action-button tap-image" src="/static/games/game-01/icon_play.png" mode="aspectFit" />
-              <text class="action-label">发音</text>
-            </view>
-            <view class="action-item" @tap="nextWord">
-              <image class="action-button tap-image" src="/static/games/game-01/icon_next.png" mode="aspectFit" />
-              <text class="action-label">下一个</text>
-            </view>
-          </view>
-        </view>
+      <view class="game-actions">
+        <image class="action-button tap-image" src="/static/games/game-01/icon_play.png" mode="aspectFit" @tap="playAudio" />
+        <image class="action-button tap-image next-button" src="/static/games/game-01/icon_next.png" mode="aspectFit" @tap="nextWord" />
       </view>
     </view>
   </view>
@@ -128,7 +113,6 @@ const windowWidth = ref(375);
 const windowHeight = ref(667);
 const statusBarHeight = ref(0);
 const menuButtonLeft = ref(375);
-const availableWordImages = ['dog'];
 
 const letterColors = ['#ff8fab', '#ffb84c', '#38a5ed', '#5ec9a4', '#b39dff'];
 
@@ -155,46 +139,28 @@ const currentWord = computed(() => words.value[currentIndex.value]);
 const primaryMeaning = computed(() => currentWord.value?.meaningCn.split(/[；;]/)[0] || '');
 const phonetic = computed(() => currentWord.value?.phoneticUs || currentWord.value?.phoneticUk || '');
 const wordLetters = computed(() => (currentWord.value?.word || '').split(''));
-const cardScale = computed(() => {
-  const cardHeight = rpxToPx(1112);
-  const cardTop = statusBarHeight.value + rpxToPx(168 + 92);
-  const availableHeight = windowHeight.value - cardTop - rpxToPx(24);
-
-  return Math.min(1, Math.max(0.76, availableHeight / cardHeight));
-});
 const gameStyle = computed<CSSProperties>(() => {
-  const cardWidth = rpxToPx(694);
-  const cardHeight = rpxToPx(1112) * cardScale.value;
-  const stageTop = statusBarHeight.value + rpxToPx(168);
-  const stageHeight = windowHeight.value - stageTop;
-  const cardTop = Math.max(rpxToPx(16), (stageHeight - cardHeight) / 2);
-  const progressWidth = rpxToPx(620);
   const titleWidth = rpxToPx(356);
   const centeredTitleLeft = (windowWidth.value - titleWidth) / 2;
   const minTitleLeft = rpxToPx(140);
   const maxTitleLeft = Math.max(minTitleLeft, menuButtonLeft.value - titleWidth - rpxToPx(28));
   const titleLeft = Math.min(Math.max(centeredTitleLeft, minTitleLeft), maxTitleLeft);
+  const boardWidth = Math.min(rpxToPx(690), windowWidth.value - rpxToPx(34));
+  const boardHeight = boardWidth * 605 / 639;
+  const boardTop = Math.max(statusBarHeight.value + rpxToPx(500), windowHeight.value * 0.38);
+  const actionBottom = Math.max(rpxToPx(48), windowHeight.value * 0.04);
 
   return {
     '--game-width': `${windowWidth.value}px`,
     '--game-height': `${windowHeight.value}px`,
-    '--card-left': `${(windowWidth.value - cardWidth) / 2}px`,
-    '--card-top': `${cardTop}px`,
-    '--card-scale': String(cardScale.value),
-    '--progress-left': `${(windowWidth.value - progressWidth) / 2}px`,
-    '--title-left': `${titleLeft}px`
+    '--title-left': `${titleLeft}px`,
+    '--board-width': `${boardWidth}px`,
+    '--board-height': `${boardHeight}px`,
+    '--board-left': `${(windowWidth.value - boardWidth) / 2}px`,
+    '--board-top': `${boardTop}px`,
+    '--action-bottom': `${actionBottom}px`
   } as CSSProperties;
 });
-const wordImageSrc = computed(() => {
-  const word = currentWord.value?.word.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-  if (word && availableWordImages.includes(word)) {
-    return `/static/games/game-01/${word}.png`;
-  }
-
-  return '/static/games/game-01/dog.png';
-});
-
 // 交替两组同样的关键帧，保证小程序端切词时入场动画能重新播放
 const swapClass = computed(() => (swapFlip.value ? 'swap-a' : 'swap-b'));
 const letterClass = computed(() => (swapFlip.value ? 'letter-a' : 'letter-b'));
@@ -388,28 +354,37 @@ function playAudio() {
 }
 
 .cloud-left {
-  left: 178rpx;
-  top: calc(var(--status-bar-height) + 154rpx);
+  left: 156rpx;
+  top: calc(var(--status-bar-height) + 230rpx);
   width: 222rpx;
   height: 121rpx;
 }
 
 .cloud-right {
   right: 72rpx;
-  top: calc(var(--status-bar-height) + 202rpx);
+  top: calc(var(--status-bar-height) + 262rpx);
   width: 168rpx;
   height: 93rpx;
   animation-delay: 2.2s;
 }
 
 .cloud-far {
-  left: 28rpx;
-  top: calc(var(--status-bar-height) + 320rpx);
-  width: 120rpx;
-  height: 66rpx;
-  opacity: 0.8;
+  left: -18rpx;
+  top: calc(var(--status-bar-height) + 40rpx);
+  width: 142rpx;
+  height: 90rpx;
+  opacity: 0.95;
   animation-delay: 3.4s;
   animation-duration: 8s;
+}
+
+.cloud-mid {
+  left: calc((var(--game-width) - 232rpx) / 2 + 62rpx);
+  top: calc(var(--status-bar-height) + 402rpx);
+  width: 232rpx;
+  height: 116rpx;
+  animation-delay: 1.3s;
+  animation-duration: 7.2s;
 }
 
 @keyframes cloud-drift {
@@ -445,7 +420,7 @@ function playAudio() {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(var(--status-bar-height) + 168rpx);
+  top: 0;
   bottom: 0;
   z-index: 2;
   width: var(--game-width);
@@ -463,7 +438,7 @@ function playAudio() {
 .progress-row {
   position: absolute;
   left: calc((var(--game-width) - 520rpx) / 2);
-  top: max(20rpx, calc(var(--card-top) - 76rpx));
+  top: calc(var(--status-bar-height) + 472rpx);
   width: 520rpx;
   min-height: 44rpx;
   display: flex;
@@ -502,37 +477,33 @@ function playAudio() {
   box-shadow: 0 0 0 6rpx rgba(255, 255, 255, 0.34), 0 0 18rpx rgba(255, 90, 138, 0.86);
 }
 
-.main-card {
+.blackboard-stage {
   position: absolute;
-  left: var(--card-left);
-  top: var(--card-top);
-  width: 694rpx;
-  height: 1112rpx;
-  transform-origin: top center;
-  transform: scale(var(--card-scale));
+  left: var(--board-left);
+  top: var(--board-top);
+  width: var(--board-width);
+  height: var(--board-height);
+  animation: stage-enter 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-@media screen and (max-height: 760px) {
-}
-
-@media screen and (max-height: 680px) {
-}
-
-.card-bg {
+.blackboard-bg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
-.card-content {
-  position: relative;
+.board-content {
+  position: absolute;
+  left: 12%;
+  top: 18%;
   z-index: 1;
-  height: 100%;
-  padding: 96rpx 74rpx 78rpx;
+  width: 76%;
+  height: 62%;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
 }
 
 /* ---------- 英文单词 ---------- */
@@ -540,16 +511,16 @@ function playAudio() {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  max-width: 540rpx;
-  min-height: 96rpx;
+  max-width: 520rpx;
+  min-height: 100rpx;
 }
 
 .letter {
-  font-size: 84rpx;
+  font-size: 88rpx;
   font-weight: 900;
-  line-height: 96rpx;
+  line-height: 100rpx;
   text-transform: uppercase;
-  text-shadow: 0 4rpx 0 rgba(255, 255, 255, 0.9), 0 8rpx 10rpx rgba(150, 110, 60, 0.2);
+  text-shadow: 0 4rpx 0 rgba(255, 255, 255, 0.45), 0 9rpx 8rpx rgba(38, 67, 42, 0.34);
 }
 
 .letter-a {
@@ -571,33 +542,47 @@ function playAudio() {
 }
 
 .phonetic-pill {
-  margin-top: 6rpx;
-  padding: 6rpx 30rpx;
+  margin-top: 24rpx;
+  min-width: 282rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  padding: 0 32rpx;
   border-radius: 999rpx;
-  background: rgba(255, 224, 168, 0.6);
+  background: #fff0c8;
+  box-shadow: 0 3rpx 0 rgba(132, 95, 43, 0.22);
+}
+
+.speaker-icon {
+  font-size: 30rpx;
+  line-height: 1;
 }
 
 .phonetic-text {
-  color: #c07a2c;
-  font-size: 30rpx;
-  font-weight: 600;
+  color: #9b6532;
+  font-size: 34rpx;
+  font-weight: 800;
 }
 
 /* ---------- 机器人舞台 ---------- */
 .picture-stage {
-  position: relative;
-  width: 480rpx;
-  height: 450rpx;
-  margin-top: 26rpx;
+  position: absolute;
+  right: 36rpx;
+  top: calc(var(--board-top) + var(--board-height) - 24rpx);
+  width: 286rpx;
+  height: 286rpx;
+  z-index: 4;
 }
 
 .halo {
   position: absolute;
-  left: 50%;
+  left: 54%;
   top: 50%;
-  width: 460rpx;
-  height: 460rpx;
-  margin: -230rpx 0 0 -230rpx;
+  width: 250rpx;
+  height: 250rpx;
+  margin: -125rpx 0 0 -125rpx;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 236, 160, 0.95) 0%, rgba(255, 214, 120, 0.35) 45%, transparent 70%);
   opacity: 0;
@@ -617,11 +602,11 @@ function playAudio() {
 
 .glow-ring {
   position: absolute;
-  left: 50%;
+  left: 54%;
   top: 50%;
-  width: 400rpx;
-  height: 400rpx;
-  margin: -200rpx 0 0 -200rpx;
+  width: 240rpx;
+  height: 240rpx;
+  margin: -120rpx 0 0 -120rpx;
   border-radius: 50%;
   border: 8rpx solid rgba(255, 184, 76, 0.85);
   pointer-events: none;
@@ -641,7 +626,7 @@ function playAudio() {
 .sparkle {
   position: absolute;
   z-index: 4;
-  font-size: 44rpx;
+  font-size: 32rpx;
   pointer-events: none;
   animation: sparkle-fly 1s ease-out both;
 }
@@ -655,10 +640,10 @@ function playAudio() {
 .sound-waves {
   position: absolute;
   z-index: 3;
-  right: 262rpx;
-  top: 30rpx;
-  width: 120rpx;
-  height: 120rpx;
+  left: 24rpx;
+  top: 44rpx;
+  width: 90rpx;
+  height: 90rpx;
   pointer-events: none;
 }
 
@@ -673,22 +658,22 @@ function playAudio() {
 }
 
 .wave-1 {
-  width: 40rpx;
-  height: 40rpx;
-  margin-top: -20rpx;
+  width: 30rpx;
+  height: 30rpx;
+  margin-top: -15rpx;
 }
 
 .wave-2 {
-  width: 76rpx;
-  height: 76rpx;
-  margin-top: -38rpx;
+  width: 56rpx;
+  height: 56rpx;
+  margin-top: -28rpx;
   animation-delay: 0.15s;
 }
 
 .wave-3 {
-  width: 112rpx;
-  height: 112rpx;
-  margin-top: -56rpx;
+  width: 82rpx;
+  height: 82rpx;
+  margin-top: -41rpx;
   animation-delay: 0.3s;
 }
 
@@ -698,42 +683,13 @@ function playAudio() {
   100% { opacity: 0; transform: scale(1.1); }
 }
 
-.speech-bubble {
-  position: absolute;
-  z-index: 4;
-  left: -16rpx;
-  top: -34rpx;
-  padding: 12rpx 26rpx;
-  border-radius: 26rpx 26rpx 26rpx 6rpx;
-  background: #fff;
-  border: 4rpx solid #ffe0a8;
-  box-shadow: 0 6rpx 14rpx rgba(200, 160, 90, 0.25);
-  animation: bubble-wobble 2.6s ease-in-out infinite;
-}
-
-.speech-bubble.talking {
-  background: #fff6df;
-  border-color: #ffb84c;
-}
-
-@keyframes bubble-wobble {
-  0%, 100% { transform: translateY(0) rotate(-2deg); }
-  50% { transform: translateY(-10rpx) rotate(2deg); }
-}
-
-.speech-text {
-  color: #e8973c;
-  font-size: 26rpx;
-  font-weight: 800;
-}
-
 .picture-note {
   position: absolute;
   z-index: 2;
   left: 0;
-  top: 108rpx;
-  width: 210rpx;
-  height: 220rpx;
+  top: 20rpx;
+  width: 156rpx;
+  height: 170rpx;
   transform: rotate(-8deg);
   animation: note-bob 3.4s 0.8s ease-in-out infinite;
 }
@@ -743,33 +699,17 @@ function playAudio() {
   50% { transform: rotate(-5deg) translateY(-12rpx); }
 }
 
-.note-glow .note-bg {
-  filter: drop-shadow(0 0 24rpx rgba(255, 200, 90, 0.95));
-}
-
-.note-bg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.word-picture {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 150rpx;
-  height: 150rpx;
-  margin: -75rpx 0 0 -75rpx;
+.note-glow {
+  filter: drop-shadow(0 0 22rpx rgba(255, 200, 90, 0.92));
 }
 
 .robot {
   position: absolute;
   z-index: 2;
   right: 0;
-  top: 0;
-  width: 300rpx;
-  height: 440rpx;
+  top: 18rpx;
+  width: 174rpx;
+  height: 258rpx;
   animation: robot-enter 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both, robot-float 3.2s 0.7s ease-in-out infinite;
 }
 
@@ -796,29 +736,31 @@ function playAudio() {
 
 /* ---------- 中文释义 ---------- */
 .meaning-row {
-  margin-top: 24rpx;
+  margin-top: 54rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 18rpx;
+  gap: 20rpx;
 }
 
 .pos-text {
   flex-shrink: 0;
   padding: 6rpx 18rpx;
   border-radius: 999rpx;
-  background: rgba(255, 184, 76, 0.9);
+  background: #ffb84c;
   color: #fff;
   font-size: 26rpx;
   font-weight: 700;
+  box-shadow: 0 3rpx 0 rgba(126, 90, 35, 0.22);
 }
 
 .meaning-text {
-  color: #7c3f13;
-  font-size: 60rpx;
+  color: #9b4f28;
+  font-size: 64rpx;
   font-weight: 900;
   line-height: 80rpx;
   text-align: center;
+  text-shadow: 0 4rpx 0 rgba(255, 238, 190, 0.72), 0 7rpx 8rpx rgba(48, 55, 40, 0.35);
 }
 
 /* ---------- 换词入场动画（交替两组以便小程序端重播） ---------- */
@@ -859,21 +801,16 @@ function playAudio() {
   to { opacity: 1; }
 }
 
-/* ---------- 底部操作 ---------- */
-.card-actions {
-  width: 100%;
-  margin-top: auto;
+.game-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--action-bottom);
+  z-index: 5;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 0 28rpx;
-}
-
-.action-item {
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4rpx;
+  justify-content: space-between;
+  padding: 0 116rpx;
 }
 
 .action-button {
@@ -881,9 +818,8 @@ function playAudio() {
   height: 116rpx;
 }
 
-.action-label {
-  color: #8a6d52;
-  font-size: 24rpx;
-  font-weight: 700;
+.next-button {
+  width: 104rpx;
+  height: 104rpx;
 }
 </style>
