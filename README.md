@@ -21,6 +21,11 @@ src/
     progress.ts             # 本地进度和最高分
   games/
     Game01.vue              # 单词快选
+    game01/
+      mock.json             # 第一个游戏接口模拟返回
+      types.ts              # 接口原始字段类型
+      adapter.ts            # 接口数据转游戏题目
+      service.ts            # 当前返回 mock，后续替换真实接口
     Game02.vue              # 字母配对
     ...
     Game20.vue              # 阅读闯关
@@ -30,6 +35,11 @@ src/
     play/play.vue           # 根据 id 展示对应游戏，小程序端使用静态组件分支
   styles/
     global.scss
+  static/
+    games/
+      game-01/              # Game01 独立图片资源
+      ...
+      game-20/              # Game20 独立图片资源
   App.vue
   main.ts
   manifest.json
@@ -44,9 +54,13 @@ npm run dev:h5
 npm run dev:mp-weixin
 npm run build:h5
 npm run build:mp-weixin
+npm run open:weixin
 ```
 
-微信小程序构建产物默认在 `dist/build/mp-weixin`，可用微信开发者工具打开。
+微信小程序构建产物默认在 `dist/build/mp-weixin`，可用微信开发者工具打开。构建后会自动把开发者工具基础库固定到 `3.8.12`，规避游客模式下新基础库安全接口异常导致的白屏。
+`npm run open:weixin` 会先构建微信小程序，再调用微信开发者工具 CLI 打开构建产物。
+
+如果微信开发者工具控制台出现 `webapi_getwxasyncsecinfo:fail`、`Cannot read property 'errMsg' of undefined`，并且环境显示 `lib: 3.15.x`，这是开发者工具游客模式或新基础库内部安全接口异常，不是页面样式导致的。先执行 `npm run open:weixin` 重新构建打开；如果仍然显示 `3.15.x`，请在开发者工具详情里把调试基础库切到 `3.8.12`，或者使用客户真实 AppID 导入 `dist/build/mp-weixin`。
 
 ## 给客户单独集成某个游戏
 
@@ -73,3 +87,14 @@ import Game21 from '@/games/Game21.vue';
 4. 在模板里添加 `v-else-if="gameId === 'game-21'"` 的展示分支。
 
 当前 20 个文件先使用统一的可玩选择题模板，后续确认每个小游戏的真实规则后，可以只替换对应 `GameXX.vue` 的模板和逻辑。
+
+## 第一个游戏 mock 数据
+
+第一个游戏已经按客户接口结构封装在 `src/games/game01/`：
+
+- `mock.json`：保存接口原始返回结构 `code/msg/data`
+- `types.ts`：声明接口响应和单词字段类型
+- `adapter.ts`：把单词列表转换成选择题题目
+- `service.ts`：暴露 `fetchGame01Words` 和 `fetchGame01Rounds`
+
+后面接真实接口时，优先替换 `service.ts` 里的 `fetchGame01Words`，`Game01.vue` 不需要改。

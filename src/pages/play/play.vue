@@ -1,5 +1,5 @@
 <template>
-  <view class="page">
+  <view class="game-shell">
     <Game01 v-if="gameId === 'game-01'" />
     <Game02 v-else-if="gameId === 'game-02'" />
     <Game03 v-else-if="gameId === 'game-03'" />
@@ -76,7 +76,8 @@ function goHome() {
 
 <style scoped lang="scss">
 .empty {
-  min-height: calc(100vh - 64rpx);
+  min-height: 100vh;
+  padding: calc(var(--status-bar-height) + 32rpx) 32rpx calc(env(safe-area-inset-bottom) + 32rpx);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -88,5 +89,16 @@ function goHome() {
   color: #182033;
   font-size: 36rpx;
   font-weight: 700;
+}
+
+.game-shell {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #f5f7fb;
+  touch-action: none;
 }
 </style>

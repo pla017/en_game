@@ -12,8 +12,8 @@
       "path": "pages/play/play",
       "style": {
         "navigationBarTitleText": "开始游戏",
-        "navigationBarBackgroundColor": "#f5f7fb",
-        "navigationBarTextStyle": "black"
+        "navigationStyle": "custom",
+        "disableScroll": true
       }
     }
   ],

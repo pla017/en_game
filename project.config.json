@@ -1,0 +1,16 @@
+{
+  "description": "uni-app source project. WeChat DevTools should run the built mini program under dist/build/mp-weixin.",
+  "miniprogramRoot": "dist/build/mp-weixin/",
+  "compileType": "miniprogram",
+  "libVersion": "3.8.12",
+  "appid": "touristappid",
+  "projectname": "en-game",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "postcss": true,
+    "minified": true,
+    "newFeature": false,
+    "bigPackageSizeSupport": true
+  }
+}

@@ -1,5 +1,11 @@
 <template>
-  <view class="choice-game">
+  <view class="choice-game mini-game-safe">
+    <view class="mini-nav">
+      <button class="nav-back" @tap="goBack">‹</button>
+      <text class="nav-title">{{ title }}</text>
+      <view class="nav-spacer" />
+    </view>
+
     <view class="game-head">
       <view>
         <text class="eyebrow">{{ gameNo }}</text>
@@ -49,7 +55,7 @@
 import { computed, ref } from 'vue';
 import { useGameProgress } from '@/composables/progress';
 
-interface Round {
+export interface ChoiceRound {
   prompt: string;
   answer: string;
   options: string[];
@@ -60,7 +66,7 @@ const props = defineProps<{
   gameNo: string;
   title: string;
   promptLabel: string;
-  rounds: Round[];
+  rounds: ChoiceRound[];
 }>();
 
 const { updateProgress, resetProgress } = useGameProgress(props.gameId);
@@ -71,12 +77,12 @@ const selected = ref('');
 const answered = ref(false);
 
 const currentRound = computed(() => props.rounds[roundIndex.value % props.rounds.length]);
-const prompt = computed(() => currentRound.value.prompt);
-const answer = computed(() => currentRound.value.answer);
-const options = computed(() => currentRound.value.options);
+const prompt = computed(() => currentRound.value?.prompt || '');
+const answer = computed(() => currentRound.value?.answer || '');
+const options = computed(() => currentRound.value?.options || []);
 
 function choose(option: string) {
-  if (answered.value) return;
+  if (answered.value || !currentRound.value) return;
 
   selected.value = option;
   answered.value = true;
@@ -89,6 +95,8 @@ function choose(option: string) {
 }
 
 function nextRound() {
+  if (!props.rounds.length) return;
+
   roundIndex.value += 1;
   selected.value = '';
   answered.value = false;
@@ -101,14 +109,54 @@ function reset() {
   answered.value = false;
   resetProgress();
 }
+
+function goBack() {
+  uni.navigateBack();
+}
 </script>
 
 <style scoped lang="scss">
 .choice-game {
-  min-height: calc(100vh - 64rpx);
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   gap: 28rpx;
+  background: #f5f7fb;
+}
+
+.mini-nav {
+  min-height: 80rpx;
+  display: grid;
+  grid-template-columns: 80rpx minmax(0, 1fr) 80rpx;
+  align-items: center;
+}
+
+.nav-back {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: #fff;
+  color: #22304a;
+  font-size: 54rpx;
+  line-height: 66rpx;
+  text-align: center;
+  box-shadow: 0 6rpx 18rpx rgba(31, 41, 55, 0.12);
+}
+
+.nav-title {
+  overflow: hidden;
+  color: #182033;
+  font-size: 32rpx;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-spacer {
+  width: 80rpx;
+  height: 1rpx;
 }
 
 .game-head {

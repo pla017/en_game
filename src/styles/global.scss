@@ -1,11 +1,89 @@
-* {
+/* #ifdef H5 */
+html,
+body,
+#app,
+uni-app,
+uni-page,
+uni-page-body {
+  width: 100%;
+  height: 100%;
+  max-width: 100vw;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+/* #endif */
+
+page {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  max-width: 100vw;
+  overflow: hidden;
+  background: #f5f7fb;
+  color: #182033;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+view,
+text,
+image,
+button,
+scroll-view {
   box-sizing: border-box;
+}
+
+image {
+  display: block;
+  will-change: transform;
+}
+
+button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  line-height: 1;
+}
+
+button::after {
+  border: 0;
 }
 
 .page {
   min-height: 100vh;
   padding: 32rpx;
   background: #f5f7fb;
+}
+
+.mini-game-screen {
+  position: relative;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #f5f7fb;
+}
+
+.mini-game-safe {
+  min-height: 100vh;
+  padding: calc(var(--status-bar-height) + 32rpx) 32rpx calc(env(safe-area-inset-bottom) + 32rpx);
+}
+
+.tap-image {
+  transition: transform 0.08s ease;
+}
+
+.tap-image:active {
+  transform: scale(0.94);
 }
 
 .primary-button {
