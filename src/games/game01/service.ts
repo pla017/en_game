@@ -2,7 +2,26 @@ import mockResponse from './mock.json';
 import { toWordChoiceRounds } from './adapter';
 import type { WordChoiceRound, WordListResponse } from './types';
 
+const GAME01_WORDS_API = '';
+
+function requestWords(url: string) {
+  return new Promise<WordListResponse>((resolve, reject) => {
+    uni.request({
+      url,
+      method: 'GET',
+      success: (response) => {
+        resolve(response.data as WordListResponse);
+      },
+      fail: reject
+    });
+  });
+}
+
 export async function fetchGame01Words(): Promise<WordListResponse> {
+  if (GAME01_WORDS_API) {
+    return requestWords(GAME01_WORDS_API);
+  }
+
   return mockResponse as WordListResponse;
 }
 

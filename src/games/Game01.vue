@@ -26,6 +26,23 @@
       <view class="blackboard-stage">
         <image class="blackboard-bg" src="/static/games/game-01/blackboard.png" mode="scaleToFill" />
 
+        <view v-if="glowing" class="board-effect board-effect-on">
+          <view class="halo" />
+          <view class="glow-ring ring-1" />
+          <view class="glow-ring ring-2" />
+          <text
+            v-for="(sparkle, index) in sparkles"
+            :key="index"
+            class="sparkle"
+            :style="sparkle.style"
+          >{{ sparkle.icon }}</text>
+          <view class="sound-waves">
+            <view class="wave wave-1" />
+            <view class="wave wave-2" />
+            <view class="wave wave-3" />
+          </view>
+        </view>
+
         <view class="board-content">
           <view class="letter-row">
             <text
@@ -37,7 +54,7 @@
             >{{ letter }}</text>
           </view>
 
-          <view v-if="phonetic" class="phonetic-pill" @tap="playAudio">
+          <view v-if="phonetic" class="phonetic-pill" @tap="manualPlayAudio">
             <text class="speaker-icon">🔊</text>
             <text class="phonetic-text">{{ phonetic }}</text>
           </view>
@@ -61,24 +78,7 @@
         />
       </view>
 
-      <view class="picture-stage" @tap="playAudio">
-        <view class="halo" :class="{ 'halo-on': glowing }" />
-        <template v-if="glowing">
-          <view class="glow-ring ring-1" />
-          <view class="glow-ring ring-2" />
-          <text
-            v-for="(sparkle, index) in sparkles"
-            :key="index"
-            class="sparkle"
-            :style="sparkle.style"
-          >{{ sparkle.icon }}</text>
-          <view class="sound-waves">
-            <view class="wave wave-1" />
-            <view class="wave wave-2" />
-            <view class="wave wave-3" />
-          </view>
-        </template>
-
+      <view class="picture-stage" @tap="manualPlayAudio">
         <image class="picture-note" :class="[swapClass, { 'note-glow': glowing }]" src="/static/games/game-01/card.png" mode="aspectFit" />
         <image
           class="robot"
@@ -89,7 +89,7 @@
       </view>
 
       <view class="game-actions">
-        <image class="action-button tap-image" src="/static/games/game-01/icon_play.png" mode="aspectFit" @tap="playAudio" />
+        <image class="action-button tap-image" :class="{ 'play-button-active': playButtonActive }" src="/static/games/game-01/icon_play.png" mode="aspectFit" @tap="manualPlayAudio" />
         <image class="action-button tap-image next-button" src="/static/games/game-01/icon_next.png" mode="aspectFit" @tap="nextWord" />
       </view>
     </view>
@@ -108,6 +108,7 @@ const currentIndex = ref(0);
 const loading = ref(true);
 const errorMessage = ref('');
 const glowing = ref(false);
+const playButtonActive = ref(false);
 const swapFlip = ref(false);
 const windowWidth = ref(375);
 const windowHeight = ref(667);
@@ -117,19 +118,37 @@ const menuButtonLeft = ref(375);
 const letterColors = ['#ff8fab', '#ffb84c', '#38a5ed', '#5ec9a4', '#b39dff'];
 
 const sparkles = [
-  { icon: '✨', style: 'left: 4%; top: 26%; --tx: -70rpx; --ty: -110rpx; animation-delay: 0ms;' },
-  { icon: '⭐', style: 'right: 4%; top: 22%; --tx: 80rpx; --ty: -100rpx; animation-delay: 80ms;' },
-  { icon: '💫', style: 'left: 10%; top: 60%; --tx: -90rpx; --ty: -20rpx; animation-delay: 160ms;' },
-  { icon: '🌟', style: 'right: 8%; top: 58%; --tx: 90rpx; --ty: -30rpx; animation-delay: 120ms;' },
-  { icon: '✨', style: 'left: 42%; top: 2%; --tx: -20rpx; --ty: -120rpx; animation-delay: 200ms;' },
-  { icon: '⭐', style: 'right: 38%; top: 4%; --tx: 40rpx; --ty: -130rpx; animation-delay: 40ms;' }
+  { icon: '✨', style: 'left: 50%; top: 50%; --tx: -205rpx; --ty: -150rpx; animation-delay: 0ms;' },
+  { icon: '⭐', style: 'left: 50%; top: 50%; --tx: 190rpx; --ty: -150rpx; animation-delay: 70ms;' },
+  { icon: '💫', style: 'left: 50%; top: 50%; --tx: -230rpx; --ty: 8rpx; animation-delay: 140ms;' },
+  { icon: '🌟', style: 'left: 50%; top: 50%; --tx: 220rpx; --ty: 14rpx; animation-delay: 120ms;' },
+  { icon: '✨', style: 'left: 50%; top: 50%; --tx: -88rpx; --ty: -214rpx; animation-delay: 200ms;' },
+  { icon: '⭐', style: 'left: 50%; top: 50%; --tx: 92rpx; --ty: -214rpx; animation-delay: 40ms;' },
+  { icon: '✨', style: 'left: 50%; top: 50%; --tx: -120rpx; --ty: 178rpx; animation-delay: 180ms;' },
+  { icon: '⭐', style: 'left: 50%; top: 50%; --tx: 130rpx; --ty: 176rpx; animation-delay: 110ms;' }
 ];
 
 const { updateProgress } = useGameProgress('game-01');
+const AUTO_REPEAT_COUNT = 3;
+const fallbackAudioMap: Record<string, { en: string; cn: string }> = {
+  hello: { en: '/static/games/game-01/audio/hello.mp3', cn: '/static/games/game-01/audio/hello_cn.mp3' },
+  hi: { en: '/static/games/game-01/audio/hi.mp3', cn: '/static/games/game-01/audio/hi_cn.mp3' },
+  i: { en: '/static/games/game-01/audio/i.mp3', cn: '/static/games/game-01/audio/i_cn.mp3' },
+  am: { en: '/static/games/game-01/audio/am.mp3', cn: '/static/games/game-01/audio/am_cn.mp3' },
+  im: { en: '/static/games/game-01/audio/im.mp3', cn: '/static/games/game-01/audio/im_cn.mp3' },
+  my: { en: '/static/games/game-01/audio/my.mp3', cn: '/static/games/game-01/audio/my_cn.mp3' },
+  name: { en: '/static/games/game-01/audio/name.mp3', cn: '/static/games/game-01/audio/name_cn.mp3' },
+  is: { en: '/static/games/game-01/audio/is.mp3', cn: '/static/games/game-01/audio/is_cn.mp3' },
+  what: { en: '/static/games/game-01/audio/what.mp3', cn: '/static/games/game-01/audio/what_cn.mp3' },
+  whats: { en: '/static/games/game-01/audio/whats.mp3', cn: '/static/games/game-01/audio/whats_cn.mp3' }
+};
 
 let audioContext: UniApp.InnerAudioContext | null = null;
 let glowTimer: ReturnType<typeof setTimeout> | null = null;
 let autoPlayTimer: ReturnType<typeof setTimeout> | null = null;
+let playButtonTimer: ReturnType<typeof setTimeout> | null = null;
+let playbackToken = 0;
+let completionModalShown = false;
 
 function rpxToPx(value: number) {
   return (windowWidth.value * value) / 750;
@@ -177,7 +196,7 @@ onMounted(async () => {
     }
 
     words.value = response.data;
-    autoPlayTimer = setTimeout(playAudio, 700);
+    autoPlayTimer = setTimeout(autoPlayCurrentWord, 700);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '加载失败';
   } finally {
@@ -189,6 +208,9 @@ onUnmounted(() => {
   (uni as any).offWindowResize?.(updateLayout);
   if (glowTimer) clearTimeout(glowTimer);
   if (autoPlayTimer) clearTimeout(autoPlayTimer);
+  if (playButtonTimer) clearTimeout(playButtonTimer);
+  playbackToken += 1;
+  audioContext?.stop();
   audioContext?.destroy();
   audioContext = null;
 });
@@ -211,12 +233,14 @@ function goBack() {
 function nextWord() {
   if (!words.value.length) return;
 
+  stopCurrentAudio();
   swapFlip.value = !swapFlip.value;
   currentIndex.value = (currentIndex.value + 1) % words.value.length;
+  completionModalShown = false;
   updateProgress((currentIndex.value + 1) * 10, currentIndex.value === words.value.length - 1);
 
   if (autoPlayTimer) clearTimeout(autoPlayTimer);
-  autoPlayTimer = setTimeout(playAudio, 500);
+  autoPlayTimer = setTimeout(autoPlayCurrentWord, 500);
 }
 
 function triggerGlow() {
@@ -229,39 +253,166 @@ function triggerGlow() {
     glowing.value = true;
     glowTimer = setTimeout(() => {
       glowing.value = false;
-    }, 1200);
+    }, 1600);
   }, 30);
 }
 
-function playAudio() {
+function triggerPlayButtonEffect() {
+  playButtonActive.value = true;
+
+  if (playButtonTimer) clearTimeout(playButtonTimer);
+
+  playButtonTimer = setTimeout(() => {
+    playButtonActive.value = false;
+  }, 520);
+}
+
+function getFallbackAudioKey(word: string) {
+  return word.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function getAudioSources(word: WordItem) {
+  const fallbackAudio = fallbackAudioMap[getFallbackAudioKey(word.word)];
+
+  return [
+    word.audioUrl || fallbackAudio?.en,
+    word.meaningAudioUrl || fallbackAudio?.cn
+  ].filter(Boolean) as string[];
+}
+
+function getAudioContext() {
+  if (!audioContext) {
+    audioContext = uni.createInnerAudioContext();
+  }
+
+  return audioContext;
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function stopCurrentAudio() {
+  playbackToken += 1;
+  audioContext?.stop();
+}
+
+function playSource(src: string, token: number) {
+  return new Promise<void>((resolve, reject) => {
+    if (token !== playbackToken) {
+      resolve();
+      return;
+    }
+
+    const context = getAudioContext();
+    let settled = false;
+
+    const cleanup = () => {
+      (context as any).offEnded?.(handleEnded);
+      (context as any).offError?.(handleError);
+    };
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const handleEnded = () => finish();
+    const handleError = (error: unknown) => fail(error);
+
+    context.stop();
+    context.onEnded(handleEnded);
+    context.onError(handleError);
+    context.src = src;
+    context.play();
+  });
+}
+
+function showCompleteDialog() {
+  if (completionModalShown) return;
+
+  completionModalShown = true;
+  uni.showModal({
+    title: '完成啦',
+    content: '最后一个单词已经播放完成。',
+    confirmText: '再练一遍',
+    cancelText: '返回',
+    success: (result) => {
+      if (result.confirm) {
+        stopCurrentAudio();
+        currentIndex.value = 0;
+        completionModalShown = false;
+        updateProgress(0, false);
+        autoPlayTimer = setTimeout(autoPlayCurrentWord, 400);
+      } else {
+        goBack();
+      }
+    }
+  });
+}
+
+async function playAudio(repeatCount = AUTO_REPEAT_COUNT) {
   const word = currentWord.value;
 
   if (!word) return;
 
-  triggerGlow();
+  stopCurrentAudio();
+  const token = playbackToken;
+  const sources = getAudioSources(word);
 
-  if (!word.audioUrl) {
+  triggerGlow();
+  triggerPlayButtonEffect();
+
+  if (!sources.length) {
     uni.showToast({
-      title: word.phoneticUs || word.word,
+      title: '接口未返回音频',
       icon: 'none'
     });
     return;
   }
 
-  if (!audioContext) {
-    audioContext = uni.createInnerAudioContext();
-    audioContext.onError((error) => {
-      console.error('Game01 audio play failed:', error);
-      uni.showToast({
-        title: '音频播放失败',
-        icon: 'none'
-      });
+  try {
+    for (let round = 0; round < repeatCount; round += 1) {
+      if (token !== playbackToken) return;
+      triggerGlow();
+
+      for (const src of sources) {
+        if (token !== playbackToken) return;
+        await playSource(src, token);
+        await wait(160);
+      }
+
+      if (round < repeatCount - 1) {
+        await wait(260);
+      }
+    }
+
+    if (token === playbackToken && currentIndex.value === words.value.length - 1) {
+      showCompleteDialog();
+    }
+  } catch (error) {
+    console.error('Game01 audio play failed:', error);
+    uni.showToast({
+      title: '音频播放失败',
+      icon: 'none'
     });
   }
+}
 
-  audioContext.stop();
-  audioContext.src = word.audioUrl;
-  audioContext.play();
+function autoPlayCurrentWord() {
+  playAudio(AUTO_REPEAT_COUNT);
+}
+
+function manualPlayAudio() {
+  playAudio(AUTO_REPEAT_COUNT);
 }
 </script>
 
@@ -493,17 +644,25 @@ function playAudio() {
   height: 100%;
 }
 
+.board-effect {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
 .board-content {
   position: absolute;
   left: 12%;
-  top: 18%;
-  z-index: 1;
+  top: 44%;
+  z-index: 3;
   width: 76%;
-  height: 62%;
+  height: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  transform: translateY(-50%);
 }
 
 /* ---------- 英文单词 ---------- */
@@ -578,20 +737,16 @@ function playAudio() {
 
 .halo {
   position: absolute;
-  left: 54%;
+  left: 50%;
   top: 50%;
-  width: 250rpx;
-  height: 250rpx;
-  margin: -125rpx 0 0 -125rpx;
+  width: 360rpx;
+  height: 360rpx;
+  margin: -180rpx 0 0 -180rpx;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 236, 160, 0.95) 0%, rgba(255, 214, 120, 0.35) 45%, transparent 70%);
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.25s ease;
   pointer-events: none;
-}
-
-.halo-on {
-  opacity: 1;
   animation: halo-pulse 0.9s ease-in-out infinite;
 }
 
@@ -602,11 +757,11 @@ function playAudio() {
 
 .glow-ring {
   position: absolute;
-  left: 54%;
+  left: 50%;
   top: 50%;
-  width: 240rpx;
-  height: 240rpx;
-  margin: -120rpx 0 0 -120rpx;
+  width: 330rpx;
+  height: 330rpx;
+  margin: -165rpx 0 0 -165rpx;
   border-radius: 50%;
   border: 8rpx solid rgba(255, 184, 76, 0.85);
   pointer-events: none;
@@ -626,7 +781,8 @@ function playAudio() {
 .sparkle {
   position: absolute;
   z-index: 4;
-  font-size: 32rpx;
+  margin: -22rpx 0 0 -22rpx;
+  font-size: 44rpx;
   pointer-events: none;
   animation: sparkle-fly 1s ease-out both;
 }
@@ -640,8 +796,8 @@ function playAudio() {
 .sound-waves {
   position: absolute;
   z-index: 3;
-  left: 24rpx;
-  top: 44rpx;
+  left: calc(50% - 45rpx);
+  top: calc(50% - 45rpx);
   width: 90rpx;
   height: 90rpx;
   pointer-events: none;
@@ -816,6 +972,19 @@ function playAudio() {
 .action-button {
   width: 116rpx;
   height: 116rpx;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.play-button-active {
+  animation: play-button-pop 0.52s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  filter: drop-shadow(0 0 22rpx rgba(255, 211, 75, 0.95));
+}
+
+@keyframes play-button-pop {
+  0% { transform: scale(1); }
+  38% { transform: scale(1.22) rotate(-6deg); }
+  70% { transform: scale(0.96) rotate(3deg); }
+  100% { transform: scale(1); }
 }
 
 .next-button {

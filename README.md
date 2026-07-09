@@ -98,3 +98,10 @@ import Game21 from '@/games/Game21.vue';
 - `service.ts`：暴露 `fetchGame01Words` 和 `fetchGame01Rounds`
 
 后面接真实接口时，优先替换 `service.ts` 里的 `fetchGame01Words`，`Game01.vue` 不需要改。
+
+第一个游戏播放时优先读取接口返回的字段：
+
+- `audioUrl`：英文单词朗读音频
+- `meaningAudioUrl`：中文释义朗读音频，可选；如果需要“英文 + 中文”完整播放一轮，服务端也要返回这个字段
+
+目前服务端还没有返回音频，前端先用 `src/static/games/game-01/audio/` 里的本地音频做开发兜底。后期接口返回音频地址后，会自动优先播放接口音频，不需要改页面逻辑。

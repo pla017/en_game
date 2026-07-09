@@ -10,6 +10,7 @@ export interface WordItem {
   phoneticUk: string | null;
   phoneticUs: string | null;
   audioUrl: string | null;
+  meaningAudioUrl: string | null;
   partOfSpeech: string | null;
   meaningCn: string;
   meaningEn: string | null;
