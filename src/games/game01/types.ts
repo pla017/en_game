@@ -48,3 +48,10 @@ export interface WordChoiceRound {
   options: string[];
   word: WordItem;
 }
+
+export interface LearningTimeReportPayload {
+  gameId: string;
+  durationSeconds: number;
+  wordCount: number;
+  completedAt: number;
+}

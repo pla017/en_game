@@ -92,6 +92,42 @@
         <image class="action-button tap-image" :class="{ 'play-button-active': playButtonActive }" src="/static/games/game-01/icon_play.png" mode="aspectFit" @tap="manualPlayAudio" />
         <image class="action-button tap-image next-button" src="/static/games/game-01/icon_next.png" mode="aspectFit" @tap="nextWord" />
       </view>
+
+      <view v-if="successVisible" class="success-mask">
+        <image class="success-light" src="/static/games/game-01/light.png" mode="aspectFit" />
+        <view class="success-cloud success-cloud-left" />
+        <view class="success-cloud success-cloud-right" />
+        <image class="success-title-img" src="/static/games/game-01/Challenge.png" mode="aspectFit" />
+        <view class="success-star-field">
+          <image class="success-star-img star-1" src="/static/games/game-01/star.png" mode="aspectFit" />
+          <image class="success-star-img star-2" src="/static/games/game-01/star.png" mode="aspectFit" />
+          <image class="success-star-img star-3" src="/static/games/game-01/star.png" mode="aspectFit" />
+          <image class="success-star-img star-4" src="/static/games/game-01/star.png" mode="aspectFit" />
+          <image class="success-star-img star-5" src="/static/games/game-01/star.png" mode="aspectFit" />
+          <image class="success-star-img star-6" src="/static/games/game-01/star.png" mode="aspectFit" />
+        </view>
+        <image class="success-award" src="/static/games/game-01/award.png" mode="aspectFit" />
+        <view class="success-info">
+          <view class="success-line">
+            <text class="success-label">闯关用时：</text>
+            <text class="success-value">{{ formattedStudyTime }}</text>
+          </view>
+          <view class="success-line">
+            <text class="success-label">获得星星：</text>
+            <view class="success-earned-stars">
+              <image class="success-earned-star" src="/static/games/game-01/star.png" mode="aspectFit" />
+              <image class="success-earned-star" src="/static/games/game-01/star.png" mode="aspectFit" />
+              <image class="success-earned-star" src="/static/games/game-01/star.png" mode="aspectFit" />
+            </view>
+          </view>
+        </view>
+        <image
+          class="next-level-button tap-image"
+          src="/static/games/game-01/next_step.png"
+          mode="aspectFit"
+          @tap="goNextLevel"
+        />
+      </view>
     </view>
   </view>
 </template>
@@ -99,7 +135,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { CSSProperties } from 'vue';
-import { fetchGame01Words } from './game01/service';
+import { fetchGame01Words, reportGame01LearningTime } from './game01/service';
 import type { WordItem } from './game01/types';
 import { useGameProgress } from '@/composables/progress';
 
@@ -110,6 +146,8 @@ const errorMessage = ref('');
 const glowing = ref(false);
 const playButtonActive = ref(false);
 const swapFlip = ref(false);
+const successVisible = ref(false);
+const studyDurationSeconds = ref(0);
 const windowWidth = ref(375);
 const windowHeight = ref(667);
 const statusBarHeight = ref(0);
@@ -149,6 +187,7 @@ let autoPlayTimer: ReturnType<typeof setTimeout> | null = null;
 let playButtonTimer: ReturnType<typeof setTimeout> | null = null;
 let playbackToken = 0;
 let completionModalShown = false;
+let studyStartedAt = 0;
 
 function rpxToPx(value: number) {
   return (windowWidth.value * value) / 750;
@@ -158,6 +197,7 @@ const currentWord = computed(() => words.value[currentIndex.value]);
 const primaryMeaning = computed(() => currentWord.value?.meaningCn.split(/[；;]/)[0] || '');
 const phonetic = computed(() => currentWord.value?.phoneticUs || currentWord.value?.phoneticUk || '');
 const wordLetters = computed(() => (currentWord.value?.word || '').split(''));
+const formattedStudyTime = computed(() => formatDuration(studyDurationSeconds.value));
 const gameStyle = computed<CSSProperties>(() => {
   const titleWidth = rpxToPx(356);
   const centeredTitleLeft = (windowWidth.value - titleWidth) / 2;
@@ -172,6 +212,7 @@ const gameStyle = computed<CSSProperties>(() => {
   return {
     '--game-width': `${windowWidth.value}px`,
     '--game-height': `${windowHeight.value}px`,
+    '--status-bar-height': `${statusBarHeight.value}px`,
     '--title-left': `${titleLeft}px`,
     '--board-width': `${boardWidth}px`,
     '--board-height': `${boardHeight}px`,
@@ -196,6 +237,7 @@ onMounted(async () => {
     }
 
     words.value = response.data;
+    studyStartedAt = Date.now();
     autoPlayTimer = setTimeout(autoPlayCurrentWord, 700);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '加载失败';
@@ -231,7 +273,7 @@ function goBack() {
 }
 
 function nextWord() {
-  if (!words.value.length) return;
+  if (!words.value.length || successVisible.value) return;
 
   stopCurrentAudio();
   swapFlip.value = !swapFlip.value;
@@ -241,6 +283,17 @@ function nextWord() {
 
   if (autoPlayTimer) clearTimeout(autoPlayTimer);
   autoPlayTimer = setTimeout(autoPlayCurrentWord, 500);
+}
+
+function formatDuration(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes <= 0) {
+    return `${seconds}秒`;
+  }
+
+  return `${minutes}分${seconds}秒`;
 }
 
 function triggerGlow() {
@@ -340,29 +393,36 @@ function showCompleteDialog() {
   if (completionModalShown) return;
 
   completionModalShown = true;
-  uni.showModal({
-    title: '完成啦',
-    content: '最后一个单词已经播放完成。',
-    confirmText: '再练一遍',
-    cancelText: '返回',
-    success: (result) => {
-      if (result.confirm) {
-        stopCurrentAudio();
-        currentIndex.value = 0;
-        completionModalShown = false;
-        updateProgress(0, false);
-        autoPlayTimer = setTimeout(autoPlayCurrentWord, 400);
-      } else {
-        goBack();
-      }
-    }
+  studyDurationSeconds.value = Math.max(1, Math.round((Date.now() - studyStartedAt) / 1000));
+  successVisible.value = true;
+  updateProgress(words.value.length * 10, true);
+  reportLearningTime();
+}
+
+async function reportLearningTime() {
+  try {
+    await reportGame01LearningTime({
+      gameId: 'game-01',
+      durationSeconds: studyDurationSeconds.value,
+      wordCount: words.value.length,
+      completedAt: Date.now()
+    });
+  } catch (error) {
+    console.error('Game01 learning time report failed:', error);
+  }
+}
+
+function goNextLevel() {
+  stopCurrentAudio();
+  uni.redirectTo({
+    url: '/pages/play/play?id=game-02'
   });
 }
 
 async function playAudio(repeatCount = AUTO_REPEAT_COUNT) {
   const word = currentWord.value;
 
-  if (!word) return;
+  if (!word || successVisible.value) return;
 
   stopCurrentAudio();
   const token = playbackToken;
@@ -990,5 +1050,237 @@ function manualPlayAudio() {
 .next-button {
   width: 104rpx;
   height: 104rpx;
+}
+
+.success-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 76, 92, 0.62);
+  overflow: hidden;
+  animation: success-fade 0.28s ease-out both;
+}
+
+@keyframes success-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.success-light {
+  position: absolute;
+  left: 50%;
+  top: 39%;
+  z-index: 1;
+  width: 720rpx;
+  height: 632rpx;
+  margin: -316rpx 0 0 -360rpx;
+  opacity: 0.95;
+  pointer-events: none;
+  animation: success-light-pulse 2s ease-in-out infinite;
+}
+
+@keyframes success-light-pulse {
+  0%, 100% { transform: scale(0.98); opacity: 0.82; }
+  50% { transform: scale(1.05); opacity: 1; }
+}
+
+.success-cloud {
+  position: absolute;
+  width: 128rpx;
+  height: 60rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.success-cloud::before,
+.success-cloud::after {
+  content: '';
+  position: absolute;
+  bottom: 14rpx;
+  border-radius: 50%;
+  background: inherit;
+}
+
+.success-cloud::before {
+  left: 22rpx;
+  width: 58rpx;
+  height: 58rpx;
+}
+
+.success-cloud::after {
+  right: 18rpx;
+  width: 46rpx;
+  height: 46rpx;
+}
+
+.success-cloud-left {
+  left: 132rpx;
+  top: 17%;
+}
+
+.success-cloud-right {
+  right: 84rpx;
+  top: 20%;
+}
+
+.success-title-img {
+  position: absolute;
+  left: 50%;
+  top: 13.5%;
+  z-index: 4;
+  width: 410rpx;
+  height: 129rpx;
+  margin-left: -205rpx;
+  animation: title-pop 0.48s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes title-pop {
+  from { transform: scale(0.62); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.success-star-field {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.success-star-img {
+  position: absolute;
+  width: 58rpx;
+  height: 56rpx;
+  filter: drop-shadow(0 5rpx 6rpx rgba(88, 59, 0, 0.26));
+  animation: success-star-twinkle 1.35s ease-in-out infinite;
+}
+
+.star-1 {
+  left: 88rpx;
+  top: 24%;
+}
+
+.star-2 {
+  right: 106rpx;
+  top: 31%;
+  width: 48rpx;
+  height: 47rpx;
+  animation-delay: 0.22s;
+}
+
+.star-3 {
+  left: 74rpx;
+  top: 38%;
+  width: 66rpx;
+  height: 64rpx;
+  animation-delay: 0.44s;
+}
+
+.star-4 {
+  right: 76rpx;
+  top: 41%;
+  width: 42rpx;
+  height: 41rpx;
+  animation-delay: 0.12s;
+}
+
+.star-5 {
+  left: 112rpx;
+  top: 53%;
+  width: 42rpx;
+  height: 41rpx;
+  animation-delay: 0.34s;
+}
+
+.star-6 {
+  right: 92rpx;
+  top: 53%;
+  width: 56rpx;
+  height: 54rpx;
+  animation-delay: 0.58s;
+}
+
+@keyframes success-star-twinkle {
+  0%, 100% { transform: scale(0.82) rotate(-8deg); opacity: 0.74; }
+  50% { transform: scale(1.18) rotate(10deg); opacity: 1; }
+}
+
+.success-award {
+  position: absolute;
+  left: 50%;
+  top: 24%;
+  z-index: 3;
+  width: 438rpx;
+  height: 597rpx;
+  margin-left: -219rpx;
+  animation: medal-pop 0.58s 0.1s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes medal-pop {
+  from { transform: translateY(80rpx) scale(0.5); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.success-info {
+  position: absolute;
+  left: 50%;
+  top: 61%;
+  z-index: 6;
+  width: 590rpx;
+  margin-left: -295rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4rpx;
+  pointer-events: none;
+}
+
+.success-line {
+  width: 590rpx;
+  min-height: 52rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 48rpx;
+}
+
+.success-label,
+.success-value {
+  color: #fff739;
+  font-size: 38rpx;
+  font-weight: 800;
+  line-height: 52rpx;
+  text-shadow:
+    0 4rpx 0 rgba(52, 142, 26, 0.9),
+    0 7rpx 9rpx rgba(0, 56, 32, 0.45);
+}
+
+.success-earned-stars {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  margin-left: 10rpx;
+}
+
+.success-earned-star {
+  width: 58rpx;
+  height: 56rpx;
+  filter: drop-shadow(0 5rpx 5rpx rgba(90, 65, 0, 0.28));
+}
+
+.next-level-button {
+  position: absolute;
+  left: 50%;
+  top: 76%;
+  z-index: 7;
+  width: 338rpx;
+  height: 110rpx;
+  margin-left: -169rpx;
+  animation: next-button-enter 0.45s 0.28s ease-out both;
+}
+
+@keyframes next-button-enter {
+  from { transform: translateY(40rpx); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 </style>

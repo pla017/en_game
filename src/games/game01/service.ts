@@ -1,8 +1,9 @@
 import mockResponse from './mock.json';
 import { toWordChoiceRounds } from './adapter';
-import type { WordChoiceRound, WordListResponse } from './types';
+import type { LearningTimeReportPayload, WordChoiceRound, WordListResponse } from './types';
 
 const GAME01_WORDS_API = '';
+const GAME01_LEARNING_TIME_API = '';
 
 function requestWords(url: string) {
   return new Promise<WordListResponse>((resolve, reject) => {
@@ -33,4 +34,21 @@ export async function fetchGame01Rounds(): Promise<WordChoiceRound[]> {
   }
 
   return toWordChoiceRounds(response.data);
+}
+
+export async function reportGame01LearningTime(payload: LearningTimeReportPayload) {
+  if (!GAME01_LEARNING_TIME_API) {
+    console.log('Game01 learning time report skipped:', payload);
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    uni.request({
+      url: GAME01_LEARNING_TIME_API,
+      method: 'POST',
+      data: payload,
+      success: () => resolve(),
+      fail: reject
+    });
+  });
 }

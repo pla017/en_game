@@ -105,3 +105,20 @@ import Game21 from '@/games/Game21.vue';
 - `meaningAudioUrl`：中文释义朗读音频，可选；如果需要“英文 + 中文”完整播放一轮，服务端也要返回这个字段
 
 目前服务端还没有返回音频，前端先用 `src/static/games/game-01/audio/` 里的本地音频做开发兜底。后期接口返回音频地址后，会自动优先播放接口音频，不需要改页面逻辑。
+
+第一个游戏最后一个单词播放完成后，会显示“闯关成功”浮层，并调用 `src/games/game01/service.ts` 里的 `reportGame01LearningTime` 上报学习时间。后端接口地址填在：
+
+```ts
+const GAME01_LEARNING_TIME_API = '';
+```
+
+当前上报参数：
+
+```ts
+{
+  gameId: 'game-01',
+  durationSeconds: 200,
+  wordCount: 10,
+  completedAt: 1780000000000
+}
+```
