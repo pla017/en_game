@@ -22,8 +22,14 @@
       <text class="error-text">{{ errorMessage }}</text>
     </view>
 
-    <view v-else-if="currentWord" class="card-stage">
-      <view class="blackboard-stage">
+      <view v-else-if="currentWord" class="card-stage">
+      <view
+        class="blackboard-stage"
+        :class="[
+          wordCardClass,
+          `word-card-target-${hideTarget}`
+        ]"
+      >
         <image class="blackboard-bg" src="/static/games/game-01/blackboard.png" mode="scaleToFill" />
 
         <view v-if="glowing" class="board-effect board-effect-on">
@@ -70,6 +76,9 @@
         <view class="count-pill">
           <text class="count-text">{{ currentIndex + 1 }}/{{ words.length }}</text>
         </view>
+        <view class="round-count-pill">
+          <text class="round-count-text">{{ searchRound }}/3</text>
+        </view>
         <view
           v-for="(item, index) in words"
           :key="item.id"
@@ -78,19 +87,45 @@
         />
       </view>
 
-      <view class="picture-stage" @tap="manualPlayAudio">
-        <image class="picture-note" :class="[swapClass, { 'note-glow': glowing }]" src="/static/games/game-01/card.png" mode="aspectFit" />
+      <view class="picture-stage">
+        <image
+          v-if="!isWordHidden"
+          class="picture-note"
+          :class="[swapClass, { 'note-glow': glowing }]"
+          src="/static/games/game-01/card.png"
+          mode="aspectFit"
+        />
         <image
           class="robot"
           :class="{ 'robot-bounce': glowing }"
           src="/static/games/game-01/robot.png"
           mode="aspectFit"
         />
+        <view v-if="isWordHidden" class="robot-bubble">
+          <text class="robot-bubble-text">{{ robotHint }}</text>
+        </view>
       </view>
+
+      <view
+        v-if="isWordHidden && hideTarget === 'cloud'"
+        class="search-hotspot cloud-search-hotspot"
+        @tap="findHiddenWord('cloud')"
+      />
+      <view
+        v-if="isWordHidden && hideTarget === 'grass'"
+        class="search-hotspot grass-search-hotspot"
+        @tap="findHiddenWord('grass')"
+      />
 
       <view class="game-actions">
         <image class="action-button tap-image" :class="{ 'play-button-active': playButtonActive }" src="/static/games/game-01/icon_play.png" mode="aspectFit" @tap="manualPlayAudio" />
-        <image class="action-button tap-image next-button" src="/static/games/game-01/icon_next.png" mode="aspectFit" @tap="nextWord" />
+        <image
+          class="action-button tap-image next-button"
+          :class="{ 'next-button-locked': !nextWordUnlocked }"
+          src="/static/games/game-01/icon_next.png"
+          mode="aspectFit"
+          @tap="nextWord"
+        />
       </view>
 
       <view v-if="successVisible" class="success-mask">
@@ -147,6 +182,9 @@ const glowing = ref(false);
 const playButtonActive = ref(false);
 const swapFlip = ref(false);
 const successVisible = ref(false);
+const wordStage = ref<'preview' | 'hiding' | 'hidden' | 'revealing' | 'revealed'>('preview');
+const searchRound = ref(0);
+const hideTarget = ref<'cloud' | 'grass'>('cloud');
 const studyDurationSeconds = ref(0);
 const windowWidth = ref(375);
 const windowHeight = ref(667);
@@ -167,7 +205,7 @@ const sparkles = [
 ];
 
 const { updateProgress } = useGameProgress('game-01');
-const AUTO_REPEAT_COUNT = 3;
+const SEARCH_ROUND_LIMIT = 3;
 const fallbackAudioMap: Record<string, { en: string; cn: string }> = {
   hello: { en: '/static/games/game-01/audio/hello.mp3', cn: '/static/games/game-01/audio/hello_cn.mp3' },
   hi: { en: '/static/games/game-01/audio/hi.mp3', cn: '/static/games/game-01/audio/hi_cn.mp3' },
@@ -185,6 +223,7 @@ let audioContext: UniApp.InnerAudioContext | null = null;
 let glowTimer: ReturnType<typeof setTimeout> | null = null;
 let autoPlayTimer: ReturnType<typeof setTimeout> | null = null;
 let playButtonTimer: ReturnType<typeof setTimeout> | null = null;
+let stageTimer: ReturnType<typeof setTimeout> | null = null;
 let playbackToken = 0;
 let completionModalShown = false;
 let studyStartedAt = 0;
@@ -194,10 +233,22 @@ function rpxToPx(value: number) {
 }
 
 const currentWord = computed(() => words.value[currentIndex.value]);
-const primaryMeaning = computed(() => currentWord.value?.meaningCn.split(/[；;]/)[0] || '');
+const primaryMeaning = computed(() => currentWord.value?.meaningCn || '');
 const phonetic = computed(() => currentWord.value?.phoneticUs || currentWord.value?.phoneticUk || '');
 const wordLetters = computed(() => (currentWord.value?.word || '').split(''));
 const formattedStudyTime = computed(() => formatDuration(studyDurationSeconds.value));
+const isWordHidden = computed(() => wordStage.value === 'hidden');
+const nextWordUnlocked = computed(() => searchRound.value >= SEARCH_ROUND_LIMIT && wordStage.value === 'revealed');
+const robotHint = computed(() => (
+  hideTarget.value === 'cloud'
+    ? '单词躲进云朵咯，点一点把它找出来！'
+    : '单词藏好啦，快来点击草丛，找回今日学习单词～'
+));
+const wordCardClass = computed(() => ({
+  'word-card-hiding': wordStage.value === 'hiding',
+  'word-card-hidden': wordStage.value === 'hidden',
+  'word-card-revealing': wordStage.value === 'revealing'
+}));
 const gameStyle = computed<CSSProperties>(() => {
   const titleWidth = rpxToPx(356);
   const centeredTitleLeft = (windowWidth.value - titleWidth) / 2;
@@ -238,7 +289,8 @@ onMounted(async () => {
 
     words.value = response.data;
     studyStartedAt = Date.now();
-    autoPlayTimer = setTimeout(autoPlayCurrentWord, 700);
+    resetWordInteraction();
+    autoPlayTimer = setTimeout(playInitialAudio, 700);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '加载失败';
   } finally {
@@ -251,6 +303,7 @@ onUnmounted(() => {
   if (glowTimer) clearTimeout(glowTimer);
   if (autoPlayTimer) clearTimeout(autoPlayTimer);
   if (playButtonTimer) clearTimeout(playButtonTimer);
+  if (stageTimer) clearTimeout(stageTimer);
   playbackToken += 1;
   audioContext?.stop();
   audioContext?.destroy();
@@ -273,16 +326,17 @@ function goBack() {
 }
 
 function nextWord() {
-  if (!words.value.length || successVisible.value) return;
+  if (!words.value.length || successVisible.value || !nextWordUnlocked.value) return;
 
   stopCurrentAudio();
+  if (stageTimer) clearTimeout(stageTimer);
   swapFlip.value = !swapFlip.value;
-  currentIndex.value = (currentIndex.value + 1) % words.value.length;
+  currentIndex.value += 1;
   completionModalShown = false;
-  updateProgress((currentIndex.value + 1) * 10, currentIndex.value === words.value.length - 1);
+  resetWordInteraction();
 
   if (autoPlayTimer) clearTimeout(autoPlayTimer);
-  autoPlayTimer = setTimeout(autoPlayCurrentWord, 500);
+  autoPlayTimer = setTimeout(playInitialAudio, 500);
 }
 
 function formatDuration(totalSeconds: number) {
@@ -352,6 +406,21 @@ function stopCurrentAudio() {
   audioContext?.stop();
 }
 
+function resetWordInteraction() {
+  searchRound.value = 0;
+  wordStage.value = 'preview';
+  hideTarget.value = 'cloud';
+}
+
+function startHideAnimation() {
+  if (stageTimer) clearTimeout(stageTimer);
+
+  wordStage.value = 'hiding';
+  stageTimer = setTimeout(() => {
+    wordStage.value = 'hidden';
+  }, 900);
+}
+
 function playSource(src: string, token: number) {
   return new Promise<void>((resolve, reject) => {
     if (token !== playbackToken) {
@@ -419,10 +488,10 @@ function goNextLevel() {
   });
 }
 
-async function playAudio(repeatCount = AUTO_REPEAT_COUNT) {
+async function playWordAudioOnce() {
   const word = currentWord.value;
 
-  if (!word || successVisible.value) return;
+  if (!word || successVisible.value) return false;
 
   stopCurrentAudio();
   const token = playbackToken;
@@ -436,43 +505,64 @@ async function playAudio(repeatCount = AUTO_REPEAT_COUNT) {
       title: '接口未返回音频',
       icon: 'none'
     });
-    return;
+    await wait(650);
+    return token === playbackToken;
   }
 
   try {
-    for (let round = 0; round < repeatCount; round += 1) {
-      if (token !== playbackToken) return;
-      triggerGlow();
-
-      for (const src of sources) {
-        if (token !== playbackToken) return;
-        await playSource(src, token);
-        await wait(160);
-      }
-
-      if (round < repeatCount - 1) {
-        await wait(260);
-      }
+    for (const src of sources) {
+      if (token !== playbackToken) return false;
+      await playSource(src, token);
+      await wait(160);
     }
 
-    if (token === playbackToken && currentIndex.value === words.value.length - 1) {
-      showCompleteDialog();
-    }
+    return token === playbackToken;
   } catch (error) {
     console.error('Game01 audio play failed:', error);
     uni.showToast({
       title: '音频播放失败',
       icon: 'none'
     });
+    return false;
   }
 }
 
-function autoPlayCurrentWord() {
-  playAudio(AUTO_REPEAT_COUNT);
+async function playInitialAudio() {
+  if (wordStage.value !== 'preview') return;
+
+  const played = await playWordAudioOnce();
+  if (played && wordStage.value === 'preview') {
+    startHideAnimation();
+  }
 }
 
 function manualPlayAudio() {
-  playAudio(AUTO_REPEAT_COUNT);
+  if (isWordHidden.value || wordStage.value === 'hiding' || wordStage.value === 'revealing') return;
+  void playWordAudioOnce();
+}
+
+async function findHiddenWord(target: 'cloud' | 'grass') {
+  if (wordStage.value !== 'hidden' || target !== hideTarget.value) return;
+
+  wordStage.value = 'revealing';
+  const played = await playWordAudioOnce();
+  if (!played || wordStage.value !== 'revealing') return;
+
+  await wait(420);
+  searchRound.value += 1;
+
+  if (searchRound.value >= SEARCH_ROUND_LIMIT) {
+    wordStage.value = 'revealed';
+    updateProgress((currentIndex.value + 1) * 10, currentIndex.value === words.value.length - 1);
+
+    if (currentIndex.value === words.value.length - 1) {
+      showCompleteDialog();
+    }
+    return;
+  }
+
+  hideTarget.value = searchRound.value % 2 === 0 ? 'cloud' : 'grass';
+  startHideAnimation();
 }
 </script>
 
@@ -553,6 +643,25 @@ function manualPlayAudio() {
   color: #2488c5;
   font-size: 22rpx;
   font-weight: 800;
+  line-height: 34rpx;
+}
+
+.round-count-pill {
+  flex: 0 0 66rpx;
+  width: 66rpx;
+  height: 34rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: rgba(255, 245, 170, 0.96);
+  box-shadow: 0 2rpx 8rpx rgba(117, 91, 17, 0.24);
+}
+
+.round-count-text {
+  color: #c07824;
+  font-size: 22rpx;
+  font-weight: 900;
   line-height: 34rpx;
 }
 
@@ -697,6 +806,52 @@ function manualPlayAudio() {
   animation: stage-enter 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
+.word-card-hidden {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.word-card-hiding.word-card-target-cloud {
+  animation: word-hide-to-cloud 0.9s cubic-bezier(0.44, 0.02, 0.76, 0.72) both;
+}
+
+.word-card-hiding.word-card-target-grass {
+  animation: word-hide-to-grass 0.9s cubic-bezier(0.44, 0.02, 0.76, 0.72) both;
+}
+
+.word-card-revealing.word-card-target-cloud {
+  animation: word-reveal-from-cloud 0.62s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+.word-card-revealing.word-card-target-grass {
+  animation: word-reveal-from-grass 0.62s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+@keyframes word-hide-to-cloud {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  68% { transform: translate(-54rpx, -220rpx) scale(0.72); opacity: 0.9; }
+  100% { transform: translate(-78rpx, -292rpx) scale(0.08); opacity: 0; }
+}
+
+@keyframes word-hide-to-grass {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  68% { transform: translate(-88rpx, 174rpx) scale(0.72); opacity: 0.9; }
+  100% { transform: translate(-108rpx, 266rpx) scale(0.08); opacity: 0; }
+}
+
+@keyframes word-reveal-from-cloud {
+  0% { transform: translate(-78rpx, -292rpx) scale(0.08); opacity: 0; }
+  70% { transform: translate(-42rpx, -92rpx) scale(0.82); opacity: 0.9; }
+  100% { transform: translate(0, 0) scale(1); opacity: 1; }
+}
+
+@keyframes word-reveal-from-grass {
+  0% { transform: translate(-108rpx, 266rpx) scale(0.08); opacity: 0; }
+  70% { transform: translate(-60rpx, 70rpx) scale(0.82); opacity: 0.9; }
+  100% { transform: translate(0, 0) scale(1); opacity: 1; }
+}
+
 .blackboard-bg {
   position: absolute;
   inset: 0;
@@ -793,6 +948,79 @@ function manualPlayAudio() {
   width: 286rpx;
   height: 286rpx;
   z-index: 4;
+}
+
+.robot-bubble {
+  position: absolute;
+  right: 12rpx;
+  top: -92rpx;
+  z-index: 6;
+  width: 360rpx;
+  min-height: 94rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18rpx 24rpx;
+  box-sizing: border-box;
+  border: 4rpx solid #46b8ee;
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6rpx 0 rgba(18, 132, 192, 0.26), 0 8rpx 18rpx rgba(10, 79, 119, 0.22);
+  animation: bubble-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.robot-bubble::after {
+  content: '';
+  position: absolute;
+  right: 64rpx;
+  bottom: -18rpx;
+  width: 28rpx;
+  height: 28rpx;
+  background: #fff;
+  border-right: 4rpx solid #46b8ee;
+  border-bottom: 4rpx solid #46b8ee;
+  transform: rotate(45deg);
+}
+
+.robot-bubble-text {
+  color: #2678a8;
+  font-size: 25rpx;
+  font-weight: 800;
+  line-height: 36rpx;
+  text-align: center;
+}
+
+@keyframes bubble-pop {
+  from { transform: translateY(18rpx) scale(0.72); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.search-hotspot {
+  position: absolute;
+  z-index: 6;
+  border: 4rpx dashed rgba(255, 255, 255, 0.24);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  animation: search-hotspot-pulse 1.8s ease-in-out infinite;
+}
+
+.cloud-search-hotspot {
+  left: 108rpx;
+  top: calc(var(--status-bar-height) + 198rpx);
+  width: 300rpx;
+  height: 174rpx;
+}
+
+.grass-search-hotspot {
+  left: 44rpx;
+  bottom: 118rpx;
+  width: 376rpx;
+  height: 190rpx;
+}
+
+@keyframes search-hotspot-pulse {
+  0%, 100% { opacity: 0.45; transform: scale(0.98); }
+  50% { opacity: 0.9; transform: scale(1.02); }
 }
 
 .halo {
@@ -954,6 +1182,8 @@ function manualPlayAudio() {
 .meaning-row {
   margin-top: 54rpx;
   display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 20rpx;
@@ -971,11 +1201,13 @@ function manualPlayAudio() {
 }
 
 .meaning-text {
+  max-width: 88%;
   color: #9b4f28;
-  font-size: 64rpx;
+  font-size: 56rpx;
   font-weight: 900;
-  line-height: 80rpx;
+  line-height: 70rpx;
   text-align: center;
+  word-break: break-all;
   text-shadow: 0 4rpx 0 rgba(255, 238, 190, 0.72), 0 7rpx 8rpx rgba(48, 55, 40, 0.35);
 }
 
@@ -1050,6 +1282,11 @@ function manualPlayAudio() {
 .next-button {
   width: 104rpx;
   height: 104rpx;
+}
+
+.next-button-locked {
+  opacity: 0.42;
+  filter: grayscale(1) saturate(0.25);
 }
 
 .success-mask {
