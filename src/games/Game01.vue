@@ -1029,8 +1029,8 @@ async function findHiddenWord(target: HideTarget) {
 
 .robot-bubble {
   position: absolute;
-  right: 96rpx;
-  top: -50rpx;
+  right: 112rpx;
+  top: -104rpx;
   z-index: 6;
   width: 306rpx;
   height: 204rpx;
@@ -1038,7 +1038,7 @@ async function findHiddenWord(target: HideTarget) {
   align-items: center;
   justify-content: center;
   padding: 44rpx 34rpx 38rpx 40rpx;
-  transform-origin: 72% 100%;
+  transform-origin: 84% 100%;
   will-change: transform, opacity;
   animation: bubble-pop 0.42s cubic-bezier(0.22, 1.1, 0.36, 1) both;
 }
@@ -1052,17 +1052,20 @@ async function findHiddenWord(target: HideTarget) {
 }
 
 .robot-bubble-text {
+  display: block;
   color: #fff;
   font-size: 24rpx;
   font-weight: 800;
   line-height: 34rpx;
   text-align: center;
+  transform: skewX(-6deg) rotate(-1deg);
+  transform-origin: center center;
   text-shadow: 0 2rpx 2rpx rgba(35, 108, 177, 0.42);
 }
 
 @keyframes bubble-pop {
-  from { transform: translateY(18rpx) rotate(-7deg) scale(0.72); opacity: 0; }
-  to { transform: translateY(0) rotate(-7deg) scale(1); opacity: 1; }
+  from { transform: translateY(18rpx) rotate(-18deg) scale(0.72); opacity: 0; }
+  to { transform: translateY(0) rotate(-18deg) scale(1); opacity: 1; }
 }
 
 .hide-target-cover {
@@ -1362,7 +1365,7 @@ async function findHiddenWord(target: HideTarget) {
 
 .robot {
   position: absolute;
-  z-index: 2;
+  z-index: 8;
   right: 0;
   top: 18rpx;
   width: 154rpx;
