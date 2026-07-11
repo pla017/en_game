@@ -1645,7 +1645,7 @@ async function findHiddenWord(target: HideTarget) {
 .success-mask {
   position: absolute;
   inset: 0;
-  z-index: 20;
+  z-index: 200;
   background: rgba(0, 76, 92, 0.62);
   overflow: hidden;
   animation: success-fade 0.28s ease-out both;
@@ -1716,7 +1716,7 @@ async function findHiddenWord(target: HideTarget) {
 .success-title-img {
   position: absolute;
   left: 50%;
-  top: 13.5%;
+  top: calc(var(--status-bar-height) + 230rpx);
   z-index: 4;
   width: 410rpx;
   height: 129rpx;
@@ -1797,7 +1797,7 @@ async function findHiddenWord(target: HideTarget) {
 .success-award {
   position: absolute;
   left: 50%;
-  top: 24%;
+  top: 30%;
   z-index: 3;
   width: 438rpx;
   height: 597rpx;
