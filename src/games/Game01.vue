@@ -13,6 +13,9 @@
     <image class="cloud cloud-right" src="/static/games/game-01/clound1.png" mode="aspectFit" />
     <image class="cloud cloud-far" src="/static/games/game-01/clound4.png" mode="aspectFit" />
     <image class="cloud cloud-mid" src="/static/games/game-01/clound5.png" mode="aspectFit" />
+    <image class="cloud cloud-low-left" src="/static/games/game-01/clound2.png" mode="aspectFit" />
+    <image class="cloud cloud-low-right" src="/static/games/game-01/clound1.png" mode="aspectFit" />
+    <image class="cloud cloud-low-mid" src="/static/games/game-01/clound2.png" mode="aspectFit" />
 
     <view v-if="loading" class="state-panel">
       <text class="state-text">加载单词数据...</text>
@@ -193,7 +196,7 @@ const swapFlip = ref(false);
 const successVisible = ref(false);
 const wordStage = ref<'preview' | 'hiding' | 'hidden' | 'revealing' | 'revealed'>('preview');
 const searchRound = ref(0);
-type HideTarget = 'cloud-left' | 'cloud-right' | 'cloud-mid' | 'grass';
+type HideTarget = 'cloud-left' | 'cloud-right' | 'cloud-mid' | 'cloud-low-left' | 'cloud-low-right' | 'cloud-low-mid' | 'grass';
 
 const hideTarget = ref<HideTarget>('cloud-left');
 const audioPlaying = ref(false);
@@ -218,7 +221,15 @@ const sparkles = [
 
 const { updateProgress } = useGameProgress('game-01');
 const SEARCH_ROUND_LIMIT = 3;
-const hideTargetOptions: HideTarget[] = ['cloud-left', 'cloud-right', 'cloud-mid', 'grass'];
+const hideTargetOptions: HideTarget[] = [
+  'cloud-left',
+  'cloud-right',
+  'cloud-mid',
+  'cloud-low-left',
+  'cloud-low-right',
+  'cloud-low-mid',
+  'grass'
+];
 const fallbackAudioMap: Record<string, { en: string; cn: string }> = {
   hello: { en: '/static/games/game-01/audio/hello.mp3', cn: '/static/games/game-01/audio/hello_cn.mp3' },
   hi: { en: '/static/games/game-01/audio/hi.mp3', cn: '/static/games/game-01/audio/hi_cn.mp3' },
@@ -261,6 +272,9 @@ const hideTargetImage = computed(() => ({
   'cloud-left': '/static/games/game-01/clound3.png',
   'cloud-right': '/static/games/game-01/clound1.png',
   'cloud-mid': '/static/games/game-01/clound5.png',
+  'cloud-low-left': '/static/games/game-01/clound2.png',
+  'cloud-low-right': '/static/games/game-01/clound1.png',
+  'cloud-low-mid': '/static/games/game-01/clound2.png',
   grass: ''
 }[hideTarget.value]));
 const nextWordUnlocked = computed(() => searchRound.value >= SEARCH_ROUND_LIMIT && wordStage.value === 'revealed');
@@ -772,6 +786,36 @@ async function findHiddenWord(target: HideTarget) {
   animation-duration: 7.2s;
 }
 
+.cloud-low-left {
+  left: 12rpx;
+  top: calc(var(--status-bar-height) + 520rpx);
+  width: 142rpx;
+  height: 90rpx;
+  opacity: 0.78;
+  animation-delay: 0.7s;
+  animation-duration: 7.6s;
+}
+
+.cloud-low-right {
+  right: 8rpx;
+  top: calc(var(--status-bar-height) + 500rpx);
+  width: 168rpx;
+  height: 93rpx;
+  opacity: 0.7;
+  animation-delay: 2.8s;
+  animation-duration: 8.2s;
+}
+
+.cloud-low-mid {
+  left: calc((var(--game-width) - 142rpx) / 2 - 18rpx);
+  top: calc(var(--status-bar-height) + 565rpx);
+  width: 142rpx;
+  height: 90rpx;
+  opacity: 0.62;
+  animation-delay: 1.9s;
+  animation-duration: 7.8s;
+}
+
 @keyframes cloud-drift {
   0%, 100% { transform: translateX(0); }
   50% { transform: translateX(28rpx); }
@@ -914,6 +958,33 @@ async function findHiddenWord(target: HideTarget) {
   --hide-y-28: -55rpx;
   --hide-x-72: 6rpx;
   --hide-y-72: -146rpx;
+}
+
+.word-card-target-cloud-low-left {
+  --hide-x: -184rpx;
+  --hide-y: 42rpx;
+  --hide-x-28: -52rpx;
+  --hide-y-28: 12rpx;
+  --hide-x-72: -132rpx;
+  --hide-y-72: 30rpx;
+}
+
+.word-card-target-cloud-low-right {
+  --hide-x: 184rpx;
+  --hide-y: 18rpx;
+  --hide-x-28: 52rpx;
+  --hide-y-28: 5rpx;
+  --hide-x-72: 132rpx;
+  --hide-y-72: 13rpx;
+}
+
+.word-card-target-cloud-low-mid {
+  --hide-x: 0rpx;
+  --hide-y: 86rpx;
+  --hide-x-28: 0rpx;
+  --hide-y-28: 24rpx;
+  --hide-x-72: 0rpx;
+  --hide-y-72: 62rpx;
 }
 
 .word-card-target-cloud-far {
@@ -1113,6 +1184,27 @@ async function findHiddenWord(target: HideTarget) {
   height: 116rpx;
 }
 
+.hide-target-cover-cloud-low-left {
+  left: 12rpx;
+  top: calc(var(--status-bar-height) + 520rpx);
+  width: 142rpx;
+  height: 90rpx;
+}
+
+.hide-target-cover-cloud-low-right {
+  right: 8rpx;
+  top: calc(var(--status-bar-height) + 500rpx);
+  width: 168rpx;
+  height: 93rpx;
+}
+
+.hide-target-cover-cloud-low-mid {
+  left: calc((var(--game-width) - 142rpx) / 2 - 18rpx);
+  top: calc(var(--status-bar-height) + 565rpx);
+  width: 142rpx;
+  height: 90rpx;
+}
+
 .hide-target-cover-cloud-far {
   left: -18rpx;
   top: calc(var(--status-bar-height) + 40rpx);
@@ -1148,6 +1240,27 @@ async function findHiddenWord(target: HideTarget) {
   top: calc(var(--status-bar-height) + 402rpx);
   width: 232rpx;
   height: 116rpx;
+}
+
+.search-guide-cloud-low-left {
+  left: 12rpx;
+  top: calc(var(--status-bar-height) + 520rpx);
+  width: 142rpx;
+  height: 90rpx;
+}
+
+.search-guide-cloud-low-right {
+  right: 8rpx;
+  top: calc(var(--status-bar-height) + 500rpx);
+  width: 168rpx;
+  height: 93rpx;
+}
+
+.search-guide-cloud-low-mid {
+  left: calc((var(--game-width) - 142rpx) / 2 - 18rpx);
+  top: calc(var(--status-bar-height) + 565rpx);
+  width: 142rpx;
+  height: 90rpx;
 }
 
 .search-guide-cloud-far {
@@ -1198,7 +1311,10 @@ async function findHiddenWord(target: HideTarget) {
 .search-guide-cloud-left .search-hand,
 .search-guide-cloud-right .search-hand,
 .search-guide-cloud-mid .search-hand,
-.search-guide-cloud-far .search-hand {
+.search-guide-cloud-far .search-hand,
+.search-guide-cloud-low-left .search-hand,
+.search-guide-cloud-low-right .search-hand,
+.search-guide-cloud-low-mid .search-hand {
   left: 54rpx;
   top: 44rpx;
 }
@@ -1222,7 +1338,10 @@ async function findHiddenWord(target: HideTarget) {
 .search-guide-cloud-left .search-tap-ring,
 .search-guide-cloud-right .search-tap-ring,
 .search-guide-cloud-mid .search-tap-ring,
-.search-guide-cloud-far .search-tap-ring {
+.search-guide-cloud-far .search-tap-ring,
+.search-guide-cloud-low-left .search-tap-ring,
+.search-guide-cloud-low-right .search-tap-ring,
+.search-guide-cloud-low-mid .search-tap-ring {
   left: 74rpx;
   top: 64rpx;
 }
