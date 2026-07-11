@@ -178,7 +178,7 @@ const swapFlip = ref(false);
 const successVisible = ref(false);
 const wordStage = ref<'preview' | 'hiding' | 'hidden' | 'revealing' | 'revealed'>('preview');
 const searchRound = ref(0);
-type HideTarget = 'cloud-left' | 'cloud-right' | 'cloud-mid' | 'cloud-far' | 'grass';
+type HideTarget = 'cloud-left' | 'cloud-right' | 'cloud-mid' | 'grass';
 
 const hideTarget = ref<HideTarget>('cloud-left');
 const audioPlaying = ref(false);
@@ -203,7 +203,7 @@ const sparkles = [
 
 const { updateProgress } = useGameProgress('game-01');
 const SEARCH_ROUND_LIMIT = 3;
-const hideTargetSequence: HideTarget[] = ['cloud-left', 'cloud-right', 'cloud-mid', 'grass', 'cloud-far'];
+const hideTargetOptions: HideTarget[] = ['cloud-left', 'cloud-right', 'cloud-mid', 'grass'];
 const fallbackAudioMap: Record<string, { en: string; cn: string }> = {
   hello: { en: '/static/games/game-01/audio/hello.mp3', cn: '/static/games/game-01/audio/hello_cn.mp3' },
   hi: { en: '/static/games/game-01/audio/hi.mp3', cn: '/static/games/game-01/audio/hi_cn.mp3' },
@@ -246,7 +246,6 @@ const hideTargetImage = computed(() => ({
   'cloud-left': '/static/games/game-01/clound3.png',
   'cloud-right': '/static/games/game-01/clound1.png',
   'cloud-mid': '/static/games/game-01/clound5.png',
-  'cloud-far': '/static/games/game-01/clound4.png',
   grass: ''
 }[hideTarget.value]));
 const nextWordUnlocked = computed(() => searchRound.value >= SEARCH_ROUND_LIMIT && wordStage.value === 'revealed');
@@ -426,12 +425,12 @@ function cancelScheduledFlow() {
 function resetWordInteraction() {
   searchRound.value = 0;
   wordStage.value = 'preview';
-  hideTarget.value = getHideTarget(0);
+  hideTarget.value = getHideTarget();
 }
 
-function getHideTarget(round: number): HideTarget {
-  const offset = currentIndex.value * 2;
-  return hideTargetSequence[(offset + round) % hideTargetSequence.length];
+function getHideTarget(excludedTarget?: HideTarget): HideTarget {
+  const candidates = hideTargetOptions.filter((target) => target !== excludedTarget);
+  return candidates[Math.floor(Math.random() * candidates.length)] || hideTargetOptions[0];
 }
 
 function startHideAnimation(expectedFlow = flowToken) {
@@ -612,7 +611,7 @@ async function findHiddenWord(target: HideTarget) {
     return;
   }
 
-  hideTarget.value = getHideTarget(searchRound.value);
+  hideTarget.value = getHideTarget(hideTarget.value);
   startHideAnimation(expectedFlow);
 }
 </script>
