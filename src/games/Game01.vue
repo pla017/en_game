@@ -1058,7 +1058,7 @@ async function findHiddenWord(target: HideTarget) {
   font-weight: 800;
   line-height: 34rpx;
   text-align: center;
-  transform: skewX(-6deg) rotate(-1deg);
+  transform: skewX(-6deg) rotate(-10deg);
   transform-origin: center center;
   text-shadow: 0 2rpx 2rpx rgba(35, 108, 177, 0.42);
 }
