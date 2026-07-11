@@ -30,7 +30,7 @@
           `word-card-target-${hideTarget}`
         ]"
       >
-        <image class="blackboard-bg" src="/static/games/game-01/blackboard.png" mode="scaleToFill" />
+        <image class="blackboard-bg" src="/static/games/game-01/main.png" mode="scaleToFill" />
 
         <view v-if="glowing" class="board-effect board-effect-on">
           <view class="halo" />
@@ -72,29 +72,7 @@
         </view>
       </view>
 
-      <view class="progress-row">
-        <view class="count-pill">
-          <text class="count-text">{{ currentIndex + 1 }}/{{ words.length }}</text>
-        </view>
-        <view class="round-count-pill">
-          <text class="round-count-text">{{ searchRound }}/3</text>
-        </view>
-        <view
-          v-for="(item, index) in words"
-          :key="item.id"
-          class="progress-dot"
-          :class="{ done: index < currentIndex, active: index === currentIndex }"
-        />
-      </view>
-
       <view class="picture-stage">
-        <image
-          v-if="!isWordHidden"
-          class="picture-note"
-          :class="[swapClass, { 'note-glow': glowing }]"
-          src="/static/games/game-01/card.png"
-          mode="aspectFit"
-        />
         <image
           class="robot"
           :class="{ 'robot-bounce': glowing }"
@@ -102,19 +80,34 @@
           mode="aspectFit"
         />
         <view v-if="isWordHidden" class="robot-bubble">
+          <image class="robot-bubble-bg" src="/static/games/game-01/diagno.png" mode="scaleToFill" />
           <text class="robot-bubble-text">{{ robotHint }}</text>
         </view>
       </view>
 
       <view
-        v-if="isWordHidden && hideTarget === 'cloud'"
-        class="search-hotspot cloud-search-hotspot"
-        @tap="findHiddenWord('cloud')"
-      />
-      <view
-        v-if="isWordHidden && hideTarget === 'grass'"
-        class="search-hotspot grass-search-hotspot"
-        @tap="findHiddenWord('grass')"
+        v-if="isWordHidden"
+        class="search-guide"
+        :class="`search-guide-${hideTarget}`"
+        @tap="findHiddenWord(hideTarget)"
+      >
+        <image
+          v-if="hideTarget === 'cloud'"
+          class="search-cloud-cover"
+          src="/static/games/game-01/clound5.png"
+          mode="aspectFit"
+        />
+        <view v-else class="search-grass-marker" />
+        <view class="search-tap-ring ring-one" />
+        <view class="search-tap-ring ring-two" />
+        <image class="search-hand" src="/static/games/game-01/touch.gif" mode="aspectFit" />
+      </view>
+
+      <image
+        v-if="isHideTargetCovered && hideTarget === 'cloud'"
+        class="hide-target-cover"
+        src="/static/games/game-01/clound5.png"
+        mode="aspectFit"
       />
 
       <view class="game-actions">
@@ -233,16 +226,19 @@ function rpxToPx(value: number) {
 }
 
 const currentWord = computed(() => words.value[currentIndex.value]);
-const primaryMeaning = computed(() => currentWord.value?.meaningCn || '');
+const primaryMeaning = computed(() => (currentWord.value?.meaningCn || '').split(/[；;、]/)[0]);
 const phonetic = computed(() => currentWord.value?.phoneticUs || currentWord.value?.phoneticUk || '');
 const wordLetters = computed(() => (currentWord.value?.word || '').split(''));
 const formattedStudyTime = computed(() => formatDuration(studyDurationSeconds.value));
 const isWordHidden = computed(() => wordStage.value === 'hidden');
+const isHideTargetCovered = computed(() => (
+  wordStage.value === 'hiding' || wordStage.value === 'hidden' || wordStage.value === 'revealing'
+));
 const nextWordUnlocked = computed(() => searchRound.value >= SEARCH_ROUND_LIMIT && wordStage.value === 'revealed');
 const robotHint = computed(() => (
   hideTarget.value === 'cloud'
-    ? '单词躲进云朵咯，点一点把它找出来！'
-    : '单词藏好啦，快来点击草丛，找回今日学习单词～'
+    ? '单词躲在云朵咯，点一点把它找出来！'
+    : '单词躲在草丛里咯，点一点把它找出来！'
 ));
 const wordCardClass = computed(() => ({
   'word-card-hiding': wordStage.value === 'hiding',
@@ -255,9 +251,9 @@ const gameStyle = computed<CSSProperties>(() => {
   const minTitleLeft = rpxToPx(140);
   const maxTitleLeft = Math.max(minTitleLeft, menuButtonLeft.value - titleWidth - rpxToPx(28));
   const titleLeft = Math.min(Math.max(centeredTitleLeft, minTitleLeft), maxTitleLeft);
-  const boardWidth = Math.min(rpxToPx(690), windowWidth.value - rpxToPx(34));
-  const boardHeight = boardWidth * 605 / 639;
-  const boardTop = Math.max(statusBarHeight.value + rpxToPx(500), windowHeight.value * 0.38);
+  const boardWidth = Math.min(rpxToPx(640), windowWidth.value - rpxToPx(64));
+  const boardHeight = boardWidth * 598 / 694;
+  const boardTop = Math.max(statusBarHeight.value + rpxToPx(400), windowHeight.value * 0.31);
   const actionBottom = Math.max(rpxToPx(48), windowHeight.value * 0.04);
 
   return {
@@ -418,7 +414,7 @@ function startHideAnimation() {
   wordStage.value = 'hiding';
   stageTimer = setTimeout(() => {
     wordStage.value = 'hidden';
-  }, 900);
+  }, 1300);
 }
 
 function playSource(src: string, token: number) {
@@ -812,43 +808,50 @@ async function findHiddenWord(target: 'cloud' | 'grass') {
   pointer-events: none;
 }
 
+.word-card-target-cloud {
+  --hide-x: 62rpx;
+  --hide-y: -372rpx;
+  --hide-x-28: 17rpx;
+  --hide-y-28: -104rpx;
+  --hide-x-72: 45rpx;
+  --hide-y-72: -268rpx;
+}
+
+.word-card-target-grass {
+  --hide-x: -108rpx;
+  --hide-y: 266rpx;
+  --hide-x-28: -30rpx;
+  --hide-y-28: 74rpx;
+  --hide-x-72: -78rpx;
+  --hide-y-72: 192rpx;
+}
+
 .word-card-hiding.word-card-target-cloud {
-  animation: word-hide-to-cloud 0.9s cubic-bezier(0.44, 0.02, 0.76, 0.72) both;
+  animation: word-hide-to-target 1.3s cubic-bezier(0.34, 0.06, 0.42, 0.98) both;
 }
 
 .word-card-hiding.word-card-target-grass {
-  animation: word-hide-to-grass 0.9s cubic-bezier(0.44, 0.02, 0.76, 0.72) both;
+  animation: word-hide-to-target 1.3s cubic-bezier(0.34, 0.06, 0.42, 0.98) both;
 }
 
 .word-card-revealing.word-card-target-cloud {
-  animation: word-reveal-from-cloud 0.62s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+  animation: word-reveal-from-target 0.72s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
 .word-card-revealing.word-card-target-grass {
-  animation: word-reveal-from-grass 0.62s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+  animation: word-reveal-from-target 0.72s cubic-bezier(0.22, 1.2, 0.36, 1) both;
 }
 
-@keyframes word-hide-to-cloud {
+@keyframes word-hide-to-target {
   0% { transform: translate(0, 0) scale(1); opacity: 1; }
-  68% { transform: translate(-54rpx, -220rpx) scale(0.72); opacity: 0.9; }
-  100% { transform: translate(-78rpx, -292rpx) scale(0.08); opacity: 0; }
+  36% { transform: translate(var(--hide-x-28), var(--hide-y-28)) scale(0.86); opacity: 0.96; }
+  72% { transform: translate(var(--hide-x-72), var(--hide-y-72)) scale(0.42); opacity: 0.82; }
+  100% { transform: translate(var(--hide-x), var(--hide-y)) scale(0.04); opacity: 0; }
 }
 
-@keyframes word-hide-to-grass {
-  0% { transform: translate(0, 0) scale(1); opacity: 1; }
-  68% { transform: translate(-88rpx, 174rpx) scale(0.72); opacity: 0.9; }
-  100% { transform: translate(-108rpx, 266rpx) scale(0.08); opacity: 0; }
-}
-
-@keyframes word-reveal-from-cloud {
-  0% { transform: translate(-78rpx, -292rpx) scale(0.08); opacity: 0; }
-  70% { transform: translate(-42rpx, -92rpx) scale(0.82); opacity: 0.9; }
-  100% { transform: translate(0, 0) scale(1); opacity: 1; }
-}
-
-@keyframes word-reveal-from-grass {
-  0% { transform: translate(-108rpx, 266rpx) scale(0.08); opacity: 0; }
-  70% { transform: translate(-60rpx, 70rpx) scale(0.82); opacity: 0.9; }
+@keyframes word-reveal-from-target {
+  0% { transform: translate(var(--hide-x), var(--hide-y)) scale(0.04); opacity: 0; }
+  68% { transform: translate(var(--hide-x-28), var(--hide-y-28)) scale(0.78); opacity: 0.92; }
   100% { transform: translate(0, 0) scale(1); opacity: 1; }
 }
 
@@ -869,7 +872,7 @@ async function findHiddenWord(target: 'cloud' | 'grass') {
 .board-content {
   position: absolute;
   left: 12%;
-  top: 44%;
+  top: 49%;
   z-index: 3;
   width: 76%;
   height: auto;
@@ -890,10 +893,9 @@ async function findHiddenWord(target: 'cloud' | 'grass') {
 }
 
 .letter {
-  font-size: 88rpx;
+  font-size: 82rpx;
   font-weight: 900;
   line-height: 100rpx;
-  text-transform: uppercase;
   text-shadow: 0 4rpx 0 rgba(255, 255, 255, 0.45), 0 9rpx 8rpx rgba(38, 67, 42, 0.34);
 }
 
@@ -945,49 +947,40 @@ async function findHiddenWord(target: 'cloud' | 'grass') {
   position: absolute;
   right: 36rpx;
   top: calc(var(--board-top) + var(--board-height) - 24rpx);
-  width: 286rpx;
-  height: 286rpx;
+  width: 230rpx;
+  height: 270rpx;
   z-index: 4;
 }
 
 .robot-bubble {
   position: absolute;
-  right: 12rpx;
-  top: -92rpx;
+  right: 96rpx;
+  top: -50rpx;
   z-index: 6;
-  width: 360rpx;
-  min-height: 94rpx;
+  width: 306rpx;
+  height: 204rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 18rpx 24rpx;
-  box-sizing: border-box;
-  border: 4rpx solid #46b8ee;
-  border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 6rpx 0 rgba(18, 132, 192, 0.26), 0 8rpx 18rpx rgba(10, 79, 119, 0.22);
+  padding: 44rpx 34rpx 38rpx 40rpx;
   animation: bubble-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-.robot-bubble::after {
-  content: '';
+.robot-bubble-bg {
   position: absolute;
-  right: 64rpx;
-  bottom: -18rpx;
-  width: 28rpx;
-  height: 28rpx;
-  background: #fff;
-  border-right: 4rpx solid #46b8ee;
-  border-bottom: 4rpx solid #46b8ee;
-  transform: rotate(45deg);
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
 }
 
 .robot-bubble-text {
-  color: #2678a8;
-  font-size: 25rpx;
+  color: #fff;
+  font-size: 24rpx;
   font-weight: 800;
-  line-height: 36rpx;
+  line-height: 34rpx;
   text-align: center;
+  text-shadow: 0 2rpx 2rpx rgba(35, 108, 177, 0.42);
 }
 
 @keyframes bubble-pop {
@@ -995,32 +988,124 @@ async function findHiddenWord(target: 'cloud' | 'grass') {
   to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
-.search-hotspot {
+.hide-target-cover {
   position: absolute;
+  left: calc((var(--game-width) - 232rpx) / 2 + 62rpx);
+  top: calc(var(--status-bar-height) + 402rpx);
   z-index: 6;
-  border: 4rpx dashed rgba(255, 255, 255, 0.24);
+  width: 232rpx;
+  height: 116rpx;
+  pointer-events: none;
+}
+
+.search-guide {
+  position: absolute;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: search-guide-enter 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.search-guide-cloud {
+  left: calc((var(--game-width) - 232rpx) / 2 + 62rpx);
+  top: calc(var(--status-bar-height) + 402rpx);
+  width: 232rpx;
+  height: 116rpx;
+}
+
+.search-guide-grass {
+  left: 34rpx;
+  bottom: 110rpx;
+  width: 308rpx;
+  height: 196rpx;
+}
+
+.search-cloud-cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.search-grass-marker {
+  position: absolute;
+  left: 14rpx;
+  right: 18rpx;
+  bottom: 0;
+  height: 96rpx;
+  border-radius: 50% 50% 42% 42%;
+  background: rgba(86, 198, 54, 0.16);
+  box-shadow: inset 0 0 0 5rpx rgba(255, 255, 255, 0.42), 0 0 24rpx rgba(255, 255, 255, 0.36);
+  pointer-events: none;
+  animation: grass-marker-pulse 1.5s ease-in-out infinite;
+}
+
+.search-hand {
+  position: absolute;
+  z-index: 3;
+  width: 126rpx;
+  height: 126rpx;
+  object-fit: contain;
+  pointer-events: none;
+  animation: hand-tap 1.1s ease-in-out infinite;
+}
+
+.search-guide-cloud .search-hand {
+  left: 54rpx;
+  top: 44rpx;
+}
+
+.search-guide-grass .search-hand {
+  right: 42rpx;
+  top: 16rpx;
+}
+
+.search-tap-ring {
+  position: absolute;
+  z-index: 2;
+  width: 86rpx;
+  height: 86rpx;
+  border: 7rpx solid rgba(255, 125, 108, 0.72);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.04);
-  animation: search-hotspot-pulse 1.8s ease-in-out infinite;
+  pointer-events: none;
+  animation: tap-ring 1.1s ease-out infinite;
 }
 
-.cloud-search-hotspot {
-  left: 108rpx;
-  top: calc(var(--status-bar-height) + 198rpx);
-  width: 300rpx;
-  height: 174rpx;
+.search-guide-cloud .search-tap-ring {
+  left: 74rpx;
+  top: 64rpx;
 }
 
-.grass-search-hotspot {
-  left: 44rpx;
-  bottom: 118rpx;
-  width: 376rpx;
-  height: 190rpx;
+.search-guide-grass .search-tap-ring {
+  right: 62rpx;
+  top: 38rpx;
 }
 
-@keyframes search-hotspot-pulse {
-  0%, 100% { opacity: 0.45; transform: scale(0.98); }
-  50% { opacity: 0.9; transform: scale(1.02); }
+.ring-two {
+  animation-delay: 0.42s;
+}
+
+@keyframes search-guide-enter {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes grass-marker-pulse {
+  0%, 100% { opacity: 0.42; transform: scale(0.96); }
+  50% { opacity: 0.9; transform: scale(1.03); }
+}
+
+@keyframes hand-tap {
+  0%, 100% { transform: translateY(0) scale(1); }
+  42% { transform: translateY(10rpx) scale(0.92); }
+  68% { transform: translateY(-4rpx) scale(1.03); }
+}
+
+@keyframes tap-ring {
+  0% { transform: scale(0.48); opacity: 0.88; }
+  78%, 100% { transform: scale(1.36); opacity: 0; }
 }
 
 .halo {
@@ -1152,8 +1237,8 @@ async function findHiddenWord(target: 'cloud' | 'grass') {
   z-index: 2;
   right: 0;
   top: 18rpx;
-  width: 174rpx;
-  height: 258rpx;
+  width: 154rpx;
+  height: 228rpx;
   animation: robot-enter 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both, robot-float 3.2s 0.7s ease-in-out infinite;
 }
 
