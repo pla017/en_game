@@ -72,6 +72,21 @@
         </view>
       </view>
 
+      <view class="progress-row">
+        <view class="count-pill">
+          <text class="count-text">{{ currentIndex + 1 }}/{{ words.length }}</text>
+        </view>
+        <view class="round-count-pill">
+          <text class="round-count-text">{{ searchRound }}/3</text>
+        </view>
+        <view
+          v-for="(item, index) in words"
+          :key="item.id"
+          class="progress-dot"
+          :class="{ done: index < currentIndex, active: index === currentIndex }"
+        />
+      </view>
+
       <view class="picture-stage">
         <image
           class="robot"
@@ -677,9 +692,9 @@ async function findHiddenWord(target: HideTarget) {
 }
 
 .count-pill {
-  flex: 0 0 78rpx;
-  width: 78rpx;
-  height: 34rpx;
+  flex: 0 0 70rpx;
+  width: 70rpx;
+  height: 32rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -691,15 +706,15 @@ async function findHiddenWord(target: HideTarget) {
 
 .count-text {
   color: #2488c5;
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 800;
-  line-height: 34rpx;
+  line-height: 32rpx;
 }
 
 .round-count-pill {
-  flex: 0 0 66rpx;
-  width: 66rpx;
-  height: 34rpx;
+  flex: 0 0 58rpx;
+  width: 58rpx;
+  height: 32rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -710,9 +725,9 @@ async function findHiddenWord(target: HideTarget) {
 
 .round-count-text {
   color: #c07824;
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 900;
-  line-height: 34rpx;
+  line-height: 32rpx;
 }
 
 /* ---------- 云朵 ---------- */
@@ -807,16 +822,19 @@ async function findHiddenWord(target: HideTarget) {
 
 .progress-row {
   position: absolute;
-  left: calc((var(--game-width) - 520rpx) / 2);
-  top: calc(var(--status-bar-height) + 472rpx);
-  width: 520rpx;
+  left: 50%;
+  top: calc(var(--status-bar-height) + 174rpx);
+  z-index: 90;
+  width: 480rpx;
   min-height: 44rpx;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-start;
   align-items: center;
-  gap: 12rpx;
-  padding: 8rpx 18rpx;
+  gap: 8rpx;
+  padding: 6rpx 12rpx;
+  box-sizing: border-box;
+  transform: translateX(-50%);
   border-radius: 999rpx;
   background: rgba(35, 116, 166, 0.34);
   box-shadow: inset 0 2rpx 8rpx rgba(9, 79, 128, 0.2), 0 3rpx 10rpx rgba(255, 255, 255, 0.22);
