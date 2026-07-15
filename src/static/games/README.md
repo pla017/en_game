@@ -1,18 +1,21 @@
 # Game Assets
 
-每个小游戏的独立图片资源放在对应目录：
+从第二个游戏开始，页面和独立资源放在同一个游戏目录：
 
 ```text
-src/static/games/game-01/
-src/static/games/game-02/
-...
-src/static/games/game-20/
+src/games/game02/
+  Game02.vue
+  assets/
+  audio/
+src/games/game03/
+  Game03.vue
+  assets/
 ```
 
-在 Vue 中引用示例：
+资源在页面中使用模块引用：
 
-```vue
-<image src="/static/games/game-01/bg.png" mode="aspectFill" />
+```ts
+import bgUrl from './assets/bg.jpg';
 ```
 
-建议每个游戏目录内继续按用途命名，例如 `bg.png`、`icon.png`、`question-01.png`。
+`src/static/games/` 只保留旧版 `game-01` 的公共静态资源。新的游戏资源不要再写绝对 `/static/games/...` 路径。

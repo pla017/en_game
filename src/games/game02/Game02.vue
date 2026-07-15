@@ -1,7 +1,7 @@
 <template>
   <view class="matching-game mini-game-screen">
-    <image class="scene-bg" src="/static/games/game-02/bg.jpg" mode="aspectFill" />
-    <image class="back-button tap-image" src="/static/games/game-02/return.png" mode="aspectFit" @tap="goBack" />
+    <image class="scene-bg" :src="bgUrl" mode="aspectFill" />
+    <image class="back-button tap-image" :src="returnUrl" mode="aspectFit" @tap="goBack" />
 
     <view class="game-title"><text>消消乐</text></view>
 
@@ -39,7 +39,7 @@
       </view>
 
       <view v-if="showWrong" class="wrong-notice">
-        <image src="/static/games/game-02/Wrong-answer.png" mode="aspectFit" />
+        <image :src="wrongAnswerUrl" mode="aspectFit" />
       </view>
       <view v-if="roundTransition" class="round-notice">第 {{ roundIndex + 2 }} 轮开始！</view>
       <view v-for="spark in sparks" :key="spark" class="success-spark" :class="`spark-${spark}`">★</view>
@@ -67,6 +67,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useGameProgress } from '@/composables/progress';
+import bgUrl from './assets/bg.jpg';
+import returnUrl from './assets/return.png';
+import wrongAnswerUrl from './assets/Wrong-answer.png';
+import selectAudioUrl from './audio/select.mp3';
+import correctAudioUrl from './audio/correct.mp3';
+import wrongAudioUrl from './audio/wrong.mp3';
 
 type Language = 'en' | 'cn';
 type Palette = 'blue' | 'lavender' | 'peach' | 'mint' | 'yellow';
@@ -124,6 +130,11 @@ let clearTimer: ReturnType<typeof setTimeout> | null = null;
 let transitionTimer: ReturnType<typeof setTimeout> | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 let effectAudio: UniApp.InnerAudioContext | null = null;
+const effectAudioUrls = {
+  select: selectAudioUrl,
+  correct: correctAudioUrl,
+  wrong: wrongAudioUrl
+};
 
 const progressPercent = computed(() => (totalMatched.value / allPairs.length) * 100);
 const earnedStars = computed(() => {
@@ -197,7 +208,11 @@ function tapCard(card: Card) {
   }
 
   if (first.language === card.language) {
-    selectedIds.value = [card.id];
+    wrongAttempts.value += 1;
+    wrongIds.value = [first.id, card.id];
+    showWrong.value = true;
+    playEffect('wrong');
+    clearFeedback(2700);
     return;
   }
 
@@ -268,7 +283,7 @@ function playEffect(effect: 'select' | 'correct' | 'wrong') {
     effectAudio.obeyMuteSwitch = false;
   }
   effectAudio.stop();
-  effectAudio.src = `/static/games/game-02/audio/${effect}.mp3`;
+  effectAudio.src = effectAudioUrls[effect];
   effectAudio.play();
 }
 
@@ -341,12 +356,19 @@ onUnmounted(() => {
 .progress-count { display: block; margin-top: 8rpx; color: #713300; font-size: 36rpx; font-weight: 900; line-height: 1; text-align: center; }
 .round-count { display: block; margin-top: 8rpx; color: #a05b12; font-size: 24rpx; font-weight: 800; line-height: 1; text-align: center; }
 
-.card-stage { position: absolute; z-index: 2; top: calc(var(--status-bar-height) + 500rpx); right: 28rpx; bottom: 38rpx; left: 28rpx; }
-.card-stage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, 150rpx); gap: 16rpx 20rpx; align-content: start; }
-.card-slot { position: relative; display: flex; min-width: 0; min-height: 150rpx; align-items: center; justify-content: center; }
-.word-card { position: relative; z-index: 3; display: inline-flex; min-width: 112rpx; max-width: 100%; min-height: 112rpx; align-items: center; justify-content: center; padding: 20rpx 20rpx; border: 6rpx solid #fff; border-radius: 16rpx; box-shadow: 0 7rpx 0 rgba(103, 71, 0, 0.18), 0 7rpx 14rpx rgba(103, 71, 0, 0.18); transform: rotate(-3deg); transition: transform 0.18s ease, filter 0.18s ease, opacity 0.24s ease; }
-.card-slot:nth-child(2n) .word-card { transform: rotate(4deg); }
-.card-slot:nth-child(3n) .word-card { transform: rotate(-6deg); }
+.card-stage { position: absolute; z-index: 2; top: calc(var(--status-bar-height) + 500rpx); right: 24rpx; left: 24rpx; height: 760rpx; }
+.card-slot { position: absolute; display: flex; width: 46%; height: 150rpx; align-items: center; justify-content: center; }
+.slot-0 { top: 0; left: 0; --card-rotation: -8deg; }
+.slot-1 { top: 30rpx; right: 0; --card-rotation: 6deg; }
+.slot-2 { top: 158rpx; left: 8%; --card-rotation: 4deg; }
+.slot-3 { top: 140rpx; right: 5%; --card-rotation: -7deg; }
+.slot-4 { top: 302rpx; left: -2%; --card-rotation: -5deg; }
+.slot-5 { top: 280rpx; right: 1%; --card-rotation: 8deg; }
+.slot-6 { top: 450rpx; left: 11%; --card-rotation: 6deg; }
+.slot-7 { top: 426rpx; right: 8%; --card-rotation: -4deg; }
+.slot-8 { top: 596rpx; left: -3%; --card-rotation: -7deg; }
+.slot-9 { top: 570rpx; right: 5%; --card-rotation: 7deg; }
+.word-card { position: relative; z-index: 3; display: inline-flex; width: max-content; min-width: 112rpx; max-width: 100%; min-height: 112rpx; align-items: center; justify-content: center; padding: 20rpx 20rpx; border: 6rpx solid #fff; border-radius: 16rpx; box-shadow: 0 7rpx 0 rgba(103, 71, 0, 0.18), 0 7rpx 14rpx rgba(103, 71, 0, 0.18); transform: rotate(var(--card-rotation, -3deg)); transition: transform 0.18s ease, filter 0.18s ease, opacity 0.24s ease; }
 .card-en { color: #245889; }
 .card-cn { color: #713d90; }
 .palette-blue { background: #a9ddfa; border-color: #fff; }
@@ -359,9 +381,7 @@ onUnmounted(() => {
 .card-label.long-word { font-size: 20rpx; letter-spacing: 0; }
 .card-cn .card-label.long-word { font-size: 36rpx; }
 .selected-mark { position: absolute; z-index: 4; top: -22rpx; right: -20rpx; width: 42rpx; height: 42rpx; border: 4rpx solid #fff; border-radius: 50%; background: #f49a2d; color: #fff; font-size: 28rpx; font-weight: 900; line-height: 34rpx; text-align: center; }
-.word-card.is-selected { z-index: 7; filter: brightness(1.12) drop-shadow(0 0 18rpx rgba(255, 255, 255, 0.95)); transform: rotate(-3deg) translateY(-10rpx) scale(1.06); }
-.card-slot:nth-child(2n) .word-card.is-selected { transform: rotate(4deg) translateY(-10rpx) scale(1.06); }
-.card-slot:nth-child(3n) .word-card.is-selected { transform: rotate(-6deg) translateY(-10rpx) scale(1.06); }
+.word-card.is-selected { z-index: 7; filter: brightness(1.12) drop-shadow(0 0 18rpx rgba(255, 255, 255, 0.95)); transform: rotate(var(--card-rotation, -3deg)) translateY(-10rpx) scale(1.06); }
 .word-card.is-clearing { animation: clear-card 0.58s ease-in forwards; pointer-events: none; }
 .word-card.is-wrong { animation: wrong-card 0.62s ease-in-out both; }
 .card-glow { position: absolute; z-index: 0; inset: -26rpx; border-radius: 50%; box-shadow: 0 0 54rpx 28rpx rgba(255, 255, 238, 0.95); animation: glow-pulse 0.72s ease-out both; pointer-events: none; }
@@ -388,8 +408,8 @@ onUnmounted(() => {
 @keyframes sparkle { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } 25% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1.2); } }
 
 @media (max-height: 680px) {
-  .card-stage { top: calc(var(--status-bar-height) + 420rpx); bottom: 24rpx; }
-  .card-slot { min-height: 126rpx; }
+  .card-stage { top: calc(var(--status-bar-height) + 420rpx); height: 680rpx; }
+  .card-slot { height: 126rpx; }
   .word-card { min-height: 96rpx; padding: 12rpx 14rpx; }
   .card-label { font-size: 32rpx; }.card-cn .card-label { font-size: 42rpx; }.card-label.long-word { font-size: 22rpx; }
 }
