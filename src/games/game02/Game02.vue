@@ -18,23 +18,27 @@
       <view v-for="slot in slots" :key="slot" class="card-slot" :class="`slot-${slot}`">
         <view
           v-if="slotCards[slot]"
-          class="word-card"
-          :class="[
-            `card-${slotCards[slot]?.language}`,
-            `palette-${slotCards[slot]?.palette}`,
-            {
-              'is-selected': selectedIds.includes(slotCards[slot]?.id || ''),
-              'is-clearing': clearingIds.includes(slotCards[slot]?.id || ''),
-              'is-wrong': wrongIds.includes(slotCards[slot]?.id || '')
-            }
-          ]"
+          class="word-card-hit"
           @tap="tapCard(slotCards[slot] as Card)"
         >
-          <view v-if="clearingIds.includes(slotCards[slot]?.id || '')" class="card-glow" />
-          <text class="card-label" :class="{ 'long-word': (slotCards[slot]?.value.length || 0) > 10 }">
-            {{ slotCards[slot]?.value }}
-          </text>
-          <view v-if="selectedIds.includes(slotCards[slot]?.id || '')" class="selected-mark">✓</view>
+          <view
+            class="word-card"
+            :class="[
+              `card-${slotCards[slot]?.language}`,
+              `palette-${slotCards[slot]?.palette}`,
+              {
+                'is-selected': selectedIds.includes(slotCards[slot]?.id || ''),
+                'is-clearing': clearingIds.includes(slotCards[slot]?.id || ''),
+                'is-wrong': wrongIds.includes(slotCards[slot]?.id || '')
+              }
+            ]"
+          >
+            <view v-if="clearingIds.includes(slotCards[slot]?.id || '')" class="card-glow" />
+            <text class="card-label" :class="{ 'long-word': (slotCards[slot]?.value.length || 0) > 10 }">
+              {{ slotCards[slot]?.value }}
+            </text>
+            <view v-if="selectedIds.includes(slotCards[slot]?.id || '')" class="selected-mark">✓</view>
+          </view>
         </view>
       </view>
 
@@ -357,7 +361,7 @@ onUnmounted(() => {
 .round-count { display: block; margin-top: 8rpx; color: #a05b12; font-size: 24rpx; font-weight: 800; line-height: 1; text-align: center; }
 
 .card-stage { position: absolute; z-index: 2; top: calc(var(--status-bar-height) + 500rpx); right: 24rpx; left: 24rpx; height: 760rpx; }
-.card-slot { position: absolute; left: 0; display: flex; width: 100%; height: 150rpx; align-items: center; justify-content: center; overflow: visible; transform: translateX(var(--slot-shift, 0)); }
+.card-slot { position: absolute; left: 0; display: flex; width: 100%; height: 150rpx; align-items: center; justify-content: center; overflow: visible; pointer-events: none; transform: translateX(var(--slot-shift, 0)); }
 .slot-0 { top: -12rpx; --slot-shift: -170rpx; --card-rotation: -12deg; }
 .slot-1 { top: 42rpx; --slot-shift: 150rpx; --card-rotation: 9deg; }
 .slot-2 { top: 158rpx; --slot-shift: -108rpx; --card-rotation: 3deg; }
@@ -368,6 +372,7 @@ onUnmounted(() => {
 .slot-7 { top: 534rpx; --slot-shift: 148rpx; --card-rotation: -7deg; }
 .slot-8 { top: 642rpx; --slot-shift: -168rpx; --card-rotation: -10deg; }
 .slot-9 { top: 696rpx; --slot-shift: 132rpx; --card-rotation: 8deg; }
+.word-card-hit { position: relative; z-index: 4; display: inline-flex; min-width: 180rpx; min-height: 170rpx; align-items: center; justify-content: center; padding: 12rpx; pointer-events: auto; touch-action: manipulation; }
 .word-card { position: relative; z-index: 3; display: inline-flex; flex: 0 1 auto; min-width: 124rpx; max-width: 100%; min-height: 120rpx; align-items: center; justify-content: center; padding: 18rpx 24rpx; border: 6rpx solid #fff; border-radius: 16rpx; box-shadow: 0 7rpx 0 rgba(103, 71, 0, 0.18), 0 7rpx 14rpx rgba(103, 71, 0, 0.18); transform: rotate(var(--card-rotation, -3deg)); transition: transform 0.18s ease, filter 0.18s ease, opacity 0.24s ease; }
 .card-en { color: #245889; }
 .card-cn { color: #713d90; }
