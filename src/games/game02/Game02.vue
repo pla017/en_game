@@ -111,6 +111,7 @@ const allPairs: PairWord[] = [
 const palettes: Palette[] = ['blue', 'lavender', 'peach', 'mint', 'yellow'];
 const pairsPerRound = 5;
 const roundsTotal = Math.ceil(allPairs.length / pairsPerRound);
+const wrongFeedbackDuration = 2700;
 const slots = Array.from({ length: pairsPerRound * 2 }, (_, index) => index);
 const { updateProgress, resetProgress } = useGameProgress('game-02');
 
@@ -190,7 +191,7 @@ function loadRound(index: number) {
 }
 
 function tapCard(card: Card) {
-  if (isComplete.value || roundTransition.value || clearingIds.value.length) return;
+  if (isComplete.value || roundTransition.value || clearingIds.value.length || showWrong.value) return;
 
   if (selectedIds.value.includes(card.id)) {
     selectedIds.value = selectedIds.value.filter((id) => id !== card.id);
@@ -216,7 +217,7 @@ function tapCard(card: Card) {
     wrongIds.value = [first.id, card.id];
     showWrong.value = true;
     playEffect('wrong');
-    clearFeedback(2700);
+    clearFeedback(wrongFeedbackDuration);
     return;
   }
 
@@ -229,7 +230,7 @@ function tapCard(card: Card) {
   wrongIds.value = [first.id, card.id];
   showWrong.value = true;
   playEffect('wrong');
-  clearFeedback(2700);
+  clearFeedback(wrongFeedbackDuration);
 }
 
 function findCard(id: string) {
