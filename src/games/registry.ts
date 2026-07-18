@@ -4,7 +4,7 @@ export const gameList: GameMeta[] = [
   { id: 'game-01', title: '单词快选', description: '根据提示快速选择正确单词。', difficulty: 'easy', status: 'ready' },
   { id: 'game-02', title: '单词消消乐', description: '配对英文单词和中文释义并消除词卡。', difficulty: 'easy', status: 'ready' },
   { id: 'game-03', title: '听音辨词', description: '听发音后选择对应单词。', difficulty: 'normal', status: 'ready' },
-  { id: 'game-04', title: '拼写挑战', description: '拖动字母拼出目标单词。', difficulty: 'normal', status: 'ready' },
+  { id: 'game-04', title: '击鼓识词', description: '听单词发音，点击对应的鼓面。', difficulty: 'normal', status: 'ready' },
   { id: 'game-05', title: '图片找词', description: '根据图片选择正确英文。', difficulty: 'easy', status: 'ready' },
   { id: 'game-06', title: '单词消消乐', description: '消除含义相同的词卡。', difficulty: 'normal', status: 'ready' },
   { id: 'game-07', title: '句子排序', description: '调整词块顺序组成句子。', difficulty: 'normal', status: 'ready' },
