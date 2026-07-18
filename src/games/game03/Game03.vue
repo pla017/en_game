@@ -43,14 +43,24 @@
 
         <view
           class="control-button record-button tap-image"
-          :class="{ recording: isRecording, passed: hasPassed }"
-          @touchstart.stop.prevent="beginRecording"
-          @touchend.stop.prevent="finishRecording()"
-          @touchcancel.stop.prevent="finishRecording()"
+          :class="{ recording: isRecording, preparing: isPreparing, passed: hasPassed }"
           @tap.stop="toggleRecording"
         >
           <image :src="recordBgUrl" mode="aspectFit" />
           <image class="control-icon" :src="recordIconUrl" mode="aspectFit" />
+          <view v-if="isPreparing" class="record-countdown">{{ countdown }}</view>
+          <view v-if="isPreparing" class="recording-state-label preparing-label">准备中</view>
+          <view v-if="isRecording" class="recording-wash" />
+          <view v-if="isRecording" class="recording-ring" />
+          <view v-if="isRecording" class="recording-state-label recording-label">录音中 · 点击结束</view>
+          <view v-if="isRecording" class="recording-badge">
+            <view class="record-dot" />
+            <text>{{ recordingSeconds }}s</text>
+          </view>
+          <view v-if="isRecording" class="recording-progress">
+            <view :style="{ width: `${recordingPercent}%` }" />
+          </view>
+          <view v-if="isFinalizingRecording" class="recording-state-label saving-label">保存中...</view>
           <view v-if="hasPassed" class="pass-glow" />
         </view>
 
@@ -142,9 +152,13 @@ const words: WordItem[] = [
 const currentIndex = ref(0);
 const completedWords = ref(0);
 const practiceCount = ref(0);
+const isPreparing = ref(false);
+const countdown = ref(3);
 const isRecording = ref(false);
+const isFinalizingRecording = ref(false);
+const recordingSeconds = ref(0);
 const hasPassed = ref(false);
-const bubbleText = ref('单词音频听完啦，长按录音按钮跟读试试吧！');
+const bubbleText = ref('单词音频听完啦，请点击录音按钮跟读两次！');
 const bubbleVersion = ref(0);
 const isComplete = ref(false);
 const elapsedSeconds = ref(0);
@@ -160,10 +174,11 @@ let awaitingRecorderStop = false;
 let recordingChunks: Blob[] = [];
 let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
 let maxRecordTimer: ReturnType<typeof setTimeout> | null = null;
+let countdownTimer: ReturnType<typeof setInterval> | null = null;
+let recordingTicker: ReturnType<typeof setInterval> | null = null;
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 let recordingStartedAt = 0;
-let lastTouchEndAt = 0;
 let wordAudio: UniApp.InnerAudioContext | null = null;
 let practiceFinalized = false;
 let speechMatched = false;
@@ -171,6 +186,7 @@ let studyStartedAt = 0;
 
 const currentWord = computed(() => words[currentIndex.value]);
 const progressPercent = computed(() => ((currentIndex.value + 1) / words.length) * 100);
+const recordingPercent = computed(() => Math.min(100, (recordingSeconds.value / 15) * 100));
 const formattedTime = computed(() => {
   const minutes = Math.floor(elapsedSeconds.value / 60).toString().padStart(2, '0');
   const seconds = (elapsedSeconds.value % 60).toString().padStart(2, '0');
@@ -219,7 +235,7 @@ function finishWordPreview() {
     clearTimeout(previewFallbackTimer);
     previewFallbackTimer = null;
   }
-  setBubbleText('单词音频听完啦，请按住录音按钮跟读两次！');
+  setBubbleText('单词音频听完啦，请点击录音按钮跟读两次！');
 }
 
 function playWordAudio(audioUrl: string) {
@@ -236,7 +252,7 @@ function playWordAudio(audioUrl: string) {
           finishWordPreview();
         }
       } else if (!isRecording.value) {
-        setBubbleText('原音播放完成，请按住录音按钮跟读两次！');
+        setBubbleText('原音播放完成，请点击录音按钮跟读两次！');
       }
     });
     wordAudio.onError(() => {
@@ -264,23 +280,60 @@ function speak(value: string) {
 }
 
 function beginRecording() {
-  if (isRecording.value || hasPassed.value || isComplete.value || isPreviewing) return;
+  if (isRecording.value || isPreparing.value || isFinalizingRecording.value || hasPassed.value || isComplete.value || isPreviewing) return;
+  isPreparing.value = true;
+  countdown.value = 3;
+  vibrate('light');
+  setBubbleText('准备开始，3 秒后进入录音。');
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    countdown.value -= 1;
+    vibrate(countdown.value <= 0 ? 'medium' : 'light');
+    if (countdown.value <= 0) {
+      if (countdownTimer) clearInterval(countdownTimer);
+      countdownTimer = null;
+      isPreparing.value = false;
+      startRecordingNow();
+    } else {
+      setBubbleText(`准备录音，还剩 ${countdown.value} 秒。`);
+    }
+  }, 1000);
+}
+
+function startRecordingNow() {
   isRecording.value = true;
+  isFinalizingRecording.value = false;
+  recordingSeconds.value = 0;
   practiceFinalized = false;
   awaitingRecorderStop = false;
   speechMatched = false;
   recordingStartedAt = Date.now();
-  setBubbleText('正在听你读，松开按钮提交，最长 15 秒。');
+  vibrate('medium');
+  setBubbleText('正在录音，点击红色按钮结束。');
   startSpeechRecognition();
   startMediaRecording();
+  if (recordingTicker) clearInterval(recordingTicker);
+  recordingTicker = setInterval(() => {
+    recordingSeconds.value = Math.min(15, Math.floor((Date.now() - recordingStartedAt) / 1000));
+  }, 250);
   if (maxRecordTimer) clearTimeout(maxRecordTimer);
   maxRecordTimer = setTimeout(() => finishRecording(true), 15000);
 }
 
 function finishRecording(autoStop = false) {
-  if (!isRecording.value && !awaitingRecorderStop) return;
-  lastTouchEndAt = Date.now();
+  if (isPreparing.value) {
+    cancelRecordingPreparation();
+    return;
+  }
+  if ((!isRecording.value && !awaitingRecorderStop) || isFinalizingRecording.value) return;
+  isFinalizingRecording.value = true;
+  vibrate('medium');
   isRecording.value = false;
+  if (recordingTicker) {
+    clearInterval(recordingTicker);
+    recordingTicker = null;
+  }
+  recordingSeconds.value = Math.min(15, Math.max(1, Math.ceil((Date.now() - recordingStartedAt) / 1000)));
   stopSpeechRecognition();
   if (maxRecordTimer) {
     clearTimeout(maxRecordTimer);
@@ -306,11 +359,32 @@ function finishRecording(autoStop = false) {
   fallbackTimer = setTimeout(() => completePractice(), Math.max(280, 650 - elapsed));
 }
 
+function cancelRecordingPreparation() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = null;
+  isPreparing.value = false;
+  countdown.value = 3;
+  setBubbleText('已取消录音，准备好后再点击录音按钮。');
+}
+
 function toggleRecording() {
-  // Tap is useful on touch environments that do not emit a complete touch sequence.
-  if (Date.now() - lastTouchEndAt < 500) return;
+  if (isPreparing.value) {
+    cancelRecordingPreparation();
+    return;
+  }
   if (isRecording.value) finishRecording();
-  else beginRecording();
+  else if (!isFinalizingRecording.value) beginRecording();
+}
+
+function vibrate(type: 'light' | 'medium') {
+  const uniApi = uni as typeof uni & {
+    vibrateShort?: (options?: { type?: 'light' | 'medium' | 'heavy' }) => void;
+  };
+  try {
+    uniApi.vibrateShort?.({ type });
+  } catch {
+    // Vibration is optional and unavailable in some H5 browsers.
+  }
 }
 
 function startSpeechRecognition() {
@@ -324,7 +398,7 @@ function startSpeechRecognition() {
     const spoken = normalize(transcripts.join(' '));
     if (spoken.includes(normalize(currentWord.value.word))) {
       speechMatched = true;
-      setBubbleText('读对啦，松开按钮完成这次跟读！');
+      setBubbleText('读对啦，再点击一次录音按钮结束本次跟读！');
     }
   };
   recognition.onerror = () => {
@@ -366,6 +440,7 @@ function startMediaRecording() {
           awaitingRecorderStop = false;
           usingUniRecorder = false;
           isRecording.value = false;
+          isFinalizingRecording.value = false;
           setBubbleText('录音没有成功，请检查麦克风权限后再试。');
         });
       }
@@ -457,6 +532,7 @@ function completePractice() {
   const nextPracticeCount = Math.min(2, practiceCount.value + 1);
   practiceCount.value = nextPracticeCount;
   isRecording.value = false;
+  isFinalizingRecording.value = false;
 
   if (nextPracticeCount < 2) {
     setBubbleText(speechMatched
@@ -486,6 +562,7 @@ function nextWord() {
   practiceCount.value = 0;
   hasPassed.value = false;
   isRecording.value = false;
+  isFinalizingRecording.value = false;
   speechMatched = false;
   startWordPreview();
 }
@@ -495,6 +572,11 @@ function restart() {
   stopMediaRecording();
   if (fallbackTimer) clearTimeout(fallbackTimer);
   if (maxRecordTimer) clearTimeout(maxRecordTimer);
+  if (countdownTimer) clearInterval(countdownTimer);
+  if (recordingTicker) clearInterval(recordingTicker);
+  countdownTimer = null;
+  recordingTicker = null;
+  isPreparing.value = false;
   if (previewTimer) {
     clearTimeout(previewTimer);
     previewTimer = null;
@@ -506,8 +588,11 @@ function restart() {
   currentIndex.value = 0;
   completedWords.value = 0;
   practiceCount.value = 0;
+  countdown.value = 3;
+  recordingSeconds.value = 0;
   hasPassed.value = false;
   isRecording.value = false;
+  isFinalizingRecording.value = false;
   isComplete.value = false;
   elapsedSeconds.value = 0;
   recordedFilePaths.value = [];
@@ -539,6 +624,8 @@ onUnmounted(() => {
   stopMediaRecording();
   if (fallbackTimer) clearTimeout(fallbackTimer);
   if (maxRecordTimer) clearTimeout(maxRecordTimer);
+  if (countdownTimer) clearInterval(countdownTimer);
+  if (recordingTicker) clearInterval(recordingTicker);
   if (previewTimer) clearTimeout(previewTimer);
   if (previewFallbackTimer) clearTimeout(previewFallbackTimer);
   if (clockTimer) clearInterval(clockTimer);
@@ -618,7 +705,20 @@ onUnmounted(() => {
 .control-button > image:first-child { position: absolute; inset: 0; width: 100%; height: 100%; }
 .control-icon { position: absolute; inset: 3%; width: 94%; height: 94%; }
 .record-button { transform: translateY(-2rpx); }
-.record-button.recording { transform: translateY(-8rpx) scale(1.04); }
+.record-button.preparing { transform: translateY(-6rpx) scale(1.03); }
+.record-button.recording { transform: translateY(-8rpx) scale(1.06); filter: drop-shadow(0 8rpx 12rpx rgba(225, 57, 57, 0.34)); animation: recording-button-pulse 0.9s ease-in-out infinite alternate; }
+.record-button.recording .control-icon { opacity: 0.42; }
+.record-countdown { position: absolute; z-index: 4; inset: 0; color: #fff; font-size: 74rpx; font-weight: 900; line-height: 160rpx; text-align: center; text-shadow: 0 4rpx 0 #b34b47; animation: countdown-pop 0.8s ease both; }
+.recording-wash { position: absolute; z-index: 2; top: 12rpx; right: 12rpx; bottom: 12rpx; left: 12rpx; border-radius: 50%; background: rgba(238, 69, 69, 0.28); animation: recording-wash 0.9s ease-in-out infinite alternate; pointer-events: none; }
+.recording-ring { position: absolute; z-index: 3; top: -18rpx; right: -18rpx; bottom: -18rpx; left: -18rpx; border: 8rpx solid rgba(239, 67, 67, 0.96); border-radius: 50%; box-shadow: 0 0 0 0 rgba(239, 67, 67, 0.55); animation: record-ring 1.15s ease-out infinite; pointer-events: none; }
+.recording-state-label { position: absolute; z-index: 7; top: -58rpx; left: 50%; min-width: 178rpx; height: 44rpx; padding: 0 18rpx; border: 3rpx solid #fff; border-radius: 24rpx; color: #fff; font-size: 23rpx; font-weight: 900; line-height: 38rpx; text-align: center; white-space: nowrap; transform: translateX(-50%); box-shadow: 0 5rpx 0 rgba(95, 113, 128, 0.22); pointer-events: none; }
+.preparing-label { background: #f1a93b; animation: status-pop 0.32s ease both; }
+.recording-label { background: #e84e4e; animation: status-pop 0.32s ease both, recording-label-blink 1s ease-in-out infinite alternate; }
+.saving-label { background: #538fba; animation: status-pop 0.32s ease both; }
+.recording-badge { position: absolute; z-index: 5; right: -24rpx; bottom: -20rpx; display: flex; min-width: 114rpx; height: 46rpx; align-items: center; justify-content: center; gap: 8rpx; padding: 0 14rpx; border: 3rpx solid #fff; border-radius: 24rpx; background: #e84e4e; color: #fff; font-size: 24rpx; font-weight: 900; line-height: 1; box-shadow: 0 4rpx 0 rgba(135, 57, 57, 0.26); }
+.record-dot { width: 14rpx; height: 14rpx; border-radius: 50%; background: #fff; animation: record-dot 0.8s ease-in-out infinite alternate; }
+.recording-progress { position: absolute; z-index: 5; right: 16rpx; bottom: 8rpx; left: 16rpx; height: 11rpx; overflow: hidden; border: 2rpx solid rgba(255, 255, 255, 0.9); border-radius: 7rpx; background: rgba(145, 43, 43, 0.38); }
+.recording-progress view { height: 100%; border-radius: inherit; background: #e84e4e; transition: width 0.25s linear; }
 .next-button.disabled { opacity: 0.48; filter: grayscale(0.45); }
 .pass-glow { position: absolute; top: -14rpx; right: -14rpx; bottom: -14rpx; left: -14rpx; border: 5rpx solid rgba(255, 222, 70, 0.95); border-radius: 48rpx; box-shadow: 0 0 22rpx 7rpx rgba(255, 224, 66, 0.85); animation: pass-pulse 0.9s ease-in-out infinite alternate; pointer-events: none; }
 
@@ -631,6 +731,13 @@ onUnmounted(() => {
 .complete-restart { margin-top: 34rpx; height: 82rpx; border-radius: 41rpx; background: #38a9dd; color: #fff; font-size: 30rpx; font-weight: 800; line-height: 82rpx; box-shadow: 0 6rpx 0 #2383b5; }
 
 @keyframes pass-pulse { from { opacity: 0.45; transform: scale(0.94); } to { opacity: 1; transform: scale(1.08); } }
+@keyframes countdown-pop { 0% { opacity: 0; transform: scale(1.5); } 70% { opacity: 1; transform: scale(0.94); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes status-pop { from { opacity: 0; transform: translate(-50%, 8rpx) scale(0.8); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes recording-button-pulse { from { transform: translateY(-8rpx) scale(1.03); } to { transform: translateY(-8rpx) scale(1.08); } }
+@keyframes recording-wash { from { opacity: 0.42; transform: scale(0.92); } to { opacity: 0.82; transform: scale(1.04); } }
+@keyframes recording-label-blink { from { opacity: 0.76; } to { opacity: 1; } }
+@keyframes record-ring { 0% { opacity: 0.9; transform: scale(0.92); box-shadow: 0 0 0 0 rgba(239, 67, 67, 0.46); } 70% { opacity: 0.28; transform: scale(1.08); box-shadow: 0 0 0 22rpx rgba(239, 67, 67, 0); } 100% { opacity: 0; transform: scale(1.12); box-shadow: 0 0 0 26rpx rgba(239, 67, 67, 0); } }
+@keyframes record-dot { from { opacity: 0.45; transform: scale(0.82); } to { opacity: 1; transform: scale(1.12); } }
 @keyframes robot-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8rpx); } }
 @keyframes robot-listen { from { transform: translateY(0) rotate(-2deg); } to { transform: translateY(-10rpx) rotate(2deg); } }
 @keyframes bubble-pop { 0% { opacity: 0; transform: scale(0.62); } 62% { opacity: 1; transform: scale(1.06); } 100% { opacity: 1; transform: scale(1); } }
