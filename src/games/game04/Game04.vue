@@ -32,6 +32,14 @@
       >
         <image class="drum-image" :src="drum.image" mode="aspectFit" />
         <text class="word-label" :class="`word-${drum.position}`">{{ drum.word }}</text>
+        <view v-if="hitDrumId === drum.id" class="drum-impact success-impact">
+          <view v-for="ring in 3" :key="ring" class="impact-ring" :class="`ring-${ring}`" />
+          <view class="impact-flash" />
+        </view>
+        <view v-if="wrongDrumId === drum.id" class="drum-impact wrong-impact">
+          <view v-for="ring in 3" :key="ring" class="impact-ring" :class="`ring-${ring}`" />
+          <view class="impact-flash" />
+        </view>
         <image
           v-if="hitDrumId === drum.id"
           class="burst success-burst"
@@ -48,15 +56,17 @@
     </view>
 
     <transition name="feedback">
-      <view v-if="feedback === 'correct'" class="feedback-card feedback-correct">
-        <image :src="answerRightUrl" mode="aspectFit" />
-        <text>答对啦！</text>
+      <view v-if="feedback === 'correct'" class="feedback-overlay feedback-correct">
+        <view class="feedback-card">
+          <image :src="answerRightUrl" mode="aspectFit" />
+        </view>
       </view>
     </transition>
     <transition name="feedback">
-      <view v-if="feedback === 'wrong'" class="feedback-card feedback-wrong">
-        <image :src="answerWrongUrl" mode="aspectFit" />
-        <text>再听一遍，试试看！</text>
+      <view v-if="feedback === 'wrong'" class="feedback-overlay feedback-wrong">
+        <view class="feedback-card">
+          <image :src="answerWrongUrl" mode="aspectFit" />
+        </view>
       </view>
     </transition>
 
@@ -274,7 +284,7 @@ function tapDrum(drum: Drum) {
     feedbackTimer = setTimeout(() => {
       feedback.value = null;
       feedbackTimer = null;
-    }, 1350);
+    }, 1650);
     return;
   }
 
@@ -286,7 +296,7 @@ function tapDrum(drum: Drum) {
   feedbackTimer = setTimeout(() => {
     clearFeedback();
     sayWord();
-  }, 1100);
+  }, 1550);
 }
 
 function replayWord() {
@@ -487,8 +497,10 @@ onUnmounted(() => {
 
 .drum-button:active { transform: scale(0.94); }
 .drum-stage.locked .drum-button { pointer-events: none; }
-.drum-button.is-hit { animation: drum-hit 0.58s ease; }
-.drum-button.is-wrong { animation: drum-shake 0.45s ease; }
+.drum-button.is-hit { z-index: 5; animation: drum-hit 0.72s cubic-bezier(0.22, 1.1, 0.36, 1); }
+.drum-button.is-wrong { z-index: 5; animation: drum-shake 0.64s ease; }
+.drum-button.is-hit .drum-image { animation: drum-surface-hit 0.72s ease; }
+.drum-button.is-wrong .drum-image { filter: saturate(1.25) brightness(1.1); }
 
 .drum-image {
   width: 100%;
@@ -497,20 +509,24 @@ onUnmounted(() => {
 
 .word-label {
   position: absolute;
+  z-index: 4;
+  top: -30rpx;
+  left: 50%;
   color: #fff;
   font-size: 34rpx;
   font-weight: 800;
   letter-spacing: 0;
   line-height: 1;
+  white-space: nowrap;
   text-shadow: -2rpx 0 #f04e47, 0 2rpx #f04e47, 2rpx 0 #f04e47, 0 -2rpx #f04e47, 2rpx 3rpx 0 rgba(149, 61, 47, 0.4);
-  transform: rotate(-10deg);
+  transform: translateX(-50%) rotate(-10deg);
 }
 
-.word-left-top { transform: rotate(13deg); }
-.word-center-top { transform: rotate(-5deg); }
-.word-right-top { transform: rotate(-17deg); }
-.word-left-bottom { transform: rotate(17deg); }
-.word-center-bottom { transform: rotate(0); }
+.word-left-top { top: -16rpx; transform: translateX(-50%) rotate(13deg); }
+.word-center-top { top: -34rpx; transform: translateX(-50%) rotate(-5deg); }
+.word-right-top { top: -18rpx; transform: translateX(-50%) rotate(-17deg); }
+.word-left-bottom { top: -18rpx; transform: translateX(-50%) rotate(17deg); }
+.word-center-bottom { top: -28rpx; transform: translateX(-50%) rotate(0); }
 
 .drum-left-top { top: 110rpx; left: 15rpx; }
 .drum-center-top { top: 20rpx; left: 260rpx; }
@@ -520,34 +536,48 @@ onUnmounted(() => {
 
 .burst {
   position: absolute;
-  top: 4rpx;
-  right: 14rpx;
-  width: 70rpx;
-  height: 86rpx;
-  animation: burst-pop 0.45s ease both;
+  z-index: 6;
+  top: -50rpx;
+  right: -24rpx;
+  width: 116rpx;
+  height: 150rpx;
+  animation: burst-pop 0.65s ease both;
 }
 
 .wrong-burst { filter: hue-rotate(180deg) saturate(1.15); }
 
-.feedback-card {
+.drum-impact { position: absolute; z-index: 3; inset: -42rpx; pointer-events: none; }
+.impact-ring { position: absolute; top: 50%; left: 50%; width: 80rpx; height: 50rpx; border: 8rpx solid; border-radius: 50%; opacity: 0; transform: translate(-50%, -50%) scale(0.2); animation: impact-ring 0.62s ease-out both; }
+.impact-ring.ring-2 { animation-delay: 0.09s; }
+.impact-ring.ring-3 { animation-delay: 0.18s; }
+.impact-flash { position: absolute; top: 50%; left: 50%; width: 130rpx; height: 86rpx; border-radius: 50%; opacity: 0; transform: translate(-50%, -50%); animation: impact-flash 0.42s ease-out both; }
+.success-impact .impact-ring { border-color: #fff25a; box-shadow: 0 0 18rpx rgba(255, 217, 50, 0.95); }
+.success-impact .impact-flash { background: rgba(255, 239, 100, 0.82); }
+.wrong-impact .impact-ring { border-color: #ff7d63; box-shadow: 0 0 18rpx rgba(243, 84, 63, 0.82); }
+.wrong-impact .impact-flash { background: rgba(255, 104, 76, 0.58); }
+
+.feedback-overlay {
   position: absolute;
-  top: 354rpx;
+  z-index: 16;
+  top: 382rpx;
   left: 50%;
   display: flex;
   align-items: center;
-  gap: 4rpx;
-  padding: 8rpx 20rpx 8rpx 10rpx;
-  border-radius: 42rpx;
-  font-size: 26rpx;
-  font-weight: 800;
+  justify-content: center;
+  width: 100%;
   transform: translateX(-50%);
+  pointer-events: none;
 }
 
-.feedback-card image { width: 58rpx; height: 48rpx; }
-.feedback-correct { color: #269f5d; background: rgba(239, 255, 244, 0.92); box-shadow: 0 4rpx 12rpx rgba(31, 142, 83, 0.16); }
-.feedback-wrong { color: #e26c3d; background: rgba(255, 246, 234, 0.94); box-shadow: 0 4rpx 12rpx rgba(209, 111, 62, 0.16); }
-.feedback-enter-active, .feedback-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
-.feedback-enter-from, .feedback-leave-to { opacity: 0; transform: translate(-50%, -12rpx); }
+.feedback-card { position: relative; display: flex; align-items: center; justify-content: center; }
+.feedback-card::before { position: absolute; top: 50%; left: 50%; width: 440rpx; height: 180rpx; border-radius: 50%; content: ''; filter: blur(14rpx); opacity: 0; animation: feedback-halo 0.8s ease-out both; }
+.feedback-card image { position: relative; width: 394rpx; height: 268rpx; animation: feedback-pop 0.48s cubic-bezier(0.2, 1.2, 0.36, 1) both; }
+.feedback-correct .feedback-card::before { background: rgba(139, 242, 76, 0.46); }
+.feedback-wrong { top: 445rpx; }
+.feedback-wrong .feedback-card::before { width: 480rpx; height: 110rpx; background: rgba(255, 175, 52, 0.42); }
+.feedback-wrong .feedback-card image { width: 440rpx; height: 90rpx; animation-name: wrong-feedback-pop; }
+.feedback-enter-active, .feedback-leave-active { transition: opacity 0.16s ease; }
+.feedback-enter-from, .feedback-leave-to { opacity: 0; }
 
 .bottom-controls {
   position: absolute;
@@ -589,9 +619,15 @@ onUnmounted(() => {
 .restart-button { width: 260rpx; height: 76rpx; margin: 0 auto; border-radius: 38rpx; background: #ff7a43; color: #fff; font-size: 30rpx; font-weight: 800; line-height: 76rpx; box-shadow: 0 6rpx 0 #d95735; }
 
 @keyframes dot-bounce { 0%, 100% { transform: translateY(0); opacity: 0.3; } 45% { transform: translateY(-7rpx); opacity: 1; } }
-@keyframes drum-hit { 0%, 100% { transform: scale(1); } 38% { transform: scale(1.13) rotate(-3deg); } 68% { transform: scale(0.96); } }
-@keyframes drum-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-13rpx) rotate(-3deg); } 75% { transform: translateX(13rpx) rotate(3deg); } }
-@keyframes burst-pop { 0% { opacity: 0; transform: scale(0.4) rotate(-20deg); } 60% { opacity: 1; transform: scale(1.16) rotate(8deg); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes drum-hit { 0%, 100% { transform: scale(1); } 20% { transform: scale(0.84) rotate(-5deg); } 48% { transform: scale(1.2) rotate(4deg); } 70% { transform: scale(0.97) rotate(-1deg); } }
+@keyframes drum-surface-hit { 0%, 100% { filter: brightness(1); } 34% { filter: brightness(1.5) saturate(1.3); } }
+@keyframes drum-shake { 0%, 100% { transform: translateX(0); } 16%, 48% { transform: translateX(-20rpx) rotate(-5deg); } 32%, 64% { transform: translateX(20rpx) rotate(5deg); } 78% { transform: translateX(-8rpx); } }
+@keyframes burst-pop { 0% { opacity: 0; transform: scale(0.2) rotate(-28deg); } 46% { opacity: 1; transform: scale(1.22) rotate(10deg); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes impact-ring { 0% { opacity: 0.95; transform: translate(-50%, -50%) scale(0.2); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(3.1); } }
+@keyframes impact-flash { 0% { opacity: 0.95; transform: translate(-50%, -50%) scale(0.4); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.55); } }
+@keyframes feedback-pop { 0% { opacity: 0; transform: scale(0.38) translateY(34rpx); } 65% { opacity: 1; transform: scale(1.12) translateY(-8rpx); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+@keyframes wrong-feedback-pop { 0% { opacity: 0; transform: scale(0.52); } 56% { opacity: 1; transform: scale(1.12) rotate(-3deg); } 72% { transform: scale(0.98) rotate(2deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
+@keyframes feedback-halo { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 100% { opacity: 0.42; transform: translate(-50%, -50%) scale(1); } }
 
 @media (max-height: 1450rpx) {
   .drum-stage { top: 382rpx; transform: scale(0.92); transform-origin: top center; }
