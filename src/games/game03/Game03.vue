@@ -29,10 +29,20 @@
         <text class="meaning">{{ currentWord.meaning }}</text>
       </view>
 
-      <image class="robot" :class="{ 'robot-listening': isRecording }" :src="robotUrl" mode="aspectFit" />
-      <view :key="bubbleVersion" class="speech-bubble bubble-pop">
+      <view class="robot" :class="{ speaking: isRobotSpeaking }">
+        <image :src="robotUrl" mode="aspectFit" />
+        <view v-if="isRobotSpeaking" class="robot-mouth" />
+      </view>
+      <view :key="bubbleVersion" class="speech-bubble" :class="{ 'bubble-speaking': isRobotSpeaking }">
         <image :src="bubbleUrl" mode="aspectFit" />
         <text class="bubble-copy">{{ bubbleText }}</text>
+      </view>
+
+      <view v-if="isPreparing" class="countdown-layer">
+        <view class="countdown-card">
+          <text :key="countdown" class="countdown-number">{{ countdown }}</text>
+          <text class="countdown-copy">准备录音</text>
+        </view>
       </view>
 
       <view class="controls">
@@ -48,14 +58,12 @@
         >
           <image :src="recordBgUrl" mode="aspectFit" />
           <image class="control-icon" :src="recordIconUrl" mode="aspectFit" />
-          <view v-if="isPreparing" class="record-countdown">{{ countdown }}</view>
-          <view v-if="isPreparing" class="recording-state-label preparing-label">准备中</view>
           <view v-if="isRecording" class="recording-wash" />
           <view v-if="isRecording" class="recording-ring" />
-          <view v-if="isRecording" class="recording-state-label recording-label">录音中 · 点击结束</view>
+          <view v-if="isRecording" class="recording-state-label recording-label">录音中 · 剩余 {{ recordingRemaining }} 秒</view>
           <view v-if="isRecording" class="recording-badge">
             <view class="record-dot" />
-            <text>{{ recordingSeconds }}s</text>
+            <text>{{ recordingRemaining }}s</text>
           </view>
           <view v-if="isRecording" class="recording-progress">
             <view :style="{ width: `${recordingPercent}%` }" />
@@ -105,7 +113,7 @@ import playBgUrl from './assets/game3_icon_play_bg.png';
 import playIconUrl from './assets/game3_icon_play.png';
 import recordBgUrl from './assets/game3_icon_Record_bg.png';
 import recordIconUrl from './assets/game3_icon_Record.png';
-import robotUrl from './assets/game3_rabot.gif';
+import robotUrl from './assets/game3_rabot.png';
 import progressBgUrl from './assets/progress_bar_bg.png';
 import progressFillUrl from './assets/progress_bar_ing.png';
 import progressPointUrl from './assets/progress_bar_point.png';
@@ -155,6 +163,7 @@ const practiceCount = ref(0);
 const isPreparing = ref(false);
 const countdown = ref(3);
 const isRecording = ref(false);
+const isRobotSpeaking = ref(false);
 const isFinalizingRecording = ref(false);
 const recordingSeconds = ref(0);
 const hasPassed = ref(false);
@@ -187,6 +196,7 @@ let studyStartedAt = 0;
 const currentWord = computed(() => words[currentIndex.value]);
 const progressPercent = computed(() => ((currentIndex.value + 1) / words.length) * 100);
 const recordingPercent = computed(() => Math.min(100, (recordingSeconds.value / 15) * 100));
+const recordingRemaining = computed(() => Math.max(0, 15 - recordingSeconds.value));
 const formattedTime = computed(() => {
   const minutes = Math.floor(elapsedSeconds.value / 60).toString().padStart(2, '0');
   const seconds = (elapsedSeconds.value % 60).toString().padStart(2, '0');
@@ -221,6 +231,7 @@ function playOriginal() {
 function startWordPreview() {
   previewPlayCount = 0;
   isPreviewing = true;
+  isRobotSpeaking.value = false;
   setBubbleText('正在播放原音，请认真听哦。');
   if (previewFallbackTimer) clearTimeout(previewFallbackTimer);
   previewFallbackTimer = setTimeout(() => {
@@ -231,6 +242,7 @@ function startWordPreview() {
 
 function finishWordPreview() {
   isPreviewing = false;
+  isRobotSpeaking.value = false;
   if (previewFallbackTimer) {
     clearTimeout(previewFallbackTimer);
     previewFallbackTimer = null;
@@ -243,6 +255,7 @@ function playWordAudio(audioUrl: string) {
     wordAudio = uni.createInnerAudioContext();
     wordAudio.obeyMuteSwitch = false;
     wordAudio.onEnded(() => {
+      isRobotSpeaking.value = false;
       if (isPreviewing) {
         previewPlayCount += 1;
         if (previewPlayCount < 2) {
@@ -257,6 +270,7 @@ function playWordAudio(audioUrl: string) {
     });
     wordAudio.onError(() => {
       isPreviewing = false;
+      isRobotSpeaking.value = false;
       if (previewFallbackTimer) {
         clearTimeout(previewFallbackTimer);
         previewFallbackTimer = null;
@@ -267,15 +281,19 @@ function playWordAudio(audioUrl: string) {
   }
   wordAudio.stop();
   wordAudio.src = audioUrl;
+  isRobotSpeaking.value = true;
   wordAudio.play();
 }
 
 function speak(value: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
+  isRobotSpeaking.value = true;
   const utterance = new SpeechSynthesisUtterance(value.toLowerCase());
   utterance.lang = 'en-US';
   utterance.rate = 0.72;
+  utterance.onend = () => { isRobotSpeaking.value = false; };
+  utterance.onerror = () => { isRobotSpeaking.value = false; };
   window.speechSynthesis.speak(utterance);
 }
 
@@ -283,12 +301,10 @@ function beginRecording() {
   if (isRecording.value || isPreparing.value || isFinalizingRecording.value || hasPassed.value || isComplete.value || isPreviewing) return;
   isPreparing.value = true;
   countdown.value = 3;
-  vibrate('light');
   setBubbleText('准备开始，3 秒后进入录音。');
   if (countdownTimer) clearInterval(countdownTimer);
   countdownTimer = setInterval(() => {
     countdown.value -= 1;
-    vibrate(countdown.value <= 0 ? 'medium' : 'light');
     if (countdown.value <= 0) {
       if (countdownTimer) clearInterval(countdownTimer);
       countdownTimer = null;
@@ -308,7 +324,6 @@ function startRecordingNow() {
   awaitingRecorderStop = false;
   speechMatched = false;
   recordingStartedAt = Date.now();
-  vibrate('medium');
   setBubbleText('正在录音，点击红色按钮结束。');
   startSpeechRecognition();
   startMediaRecording();
@@ -327,7 +342,6 @@ function finishRecording(autoStop = false) {
   }
   if ((!isRecording.value && !awaitingRecorderStop) || isFinalizingRecording.value) return;
   isFinalizingRecording.value = true;
-  vibrate('medium');
   isRecording.value = false;
   if (recordingTicker) {
     clearInterval(recordingTicker);
@@ -374,17 +388,6 @@ function toggleRecording() {
   }
   if (isRecording.value) finishRecording();
   else if (!isFinalizingRecording.value) beginRecording();
-}
-
-function vibrate(type: 'light' | 'medium') {
-  const uniApi = uni as typeof uni & {
-    vibrateShort?: (options?: { type?: 'light' | 'medium' | 'heavy' }) => void;
-  };
-  try {
-    uniApi.vibrateShort?.({ type });
-  } catch {
-    // Vibration is optional and unavailable in some H5 browsers.
-  }
 }
 
 function startSpeechRecognition() {
@@ -631,6 +634,7 @@ onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer);
   wordAudio?.destroy();
   wordAudio = null;
+  isRobotSpeaking.value = false;
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
 });
 </script>
@@ -693,12 +697,19 @@ onUnmounted(() => {
 .phonetic { display: block; margin-top: 28rpx; color: #fff; font-family: Arial, sans-serif; font-size: 62rpx; font-style: italic; font-weight: 800; line-height: 1; -webkit-text-stroke: 4rpx #4e8ed9; paint-order: stroke fill; }
 .meaning { display: block; margin-top: 30rpx; color: #1687d1; font-size: 54rpx; font-weight: 500; line-height: 1; }
 
-.robot { position: absolute; z-index: 5; top: 54.5%; left: 64%; width: 216rpx; height: 318rpx; animation: robot-float 2.8s ease-in-out infinite; }
-.robot.robot-listening { animation: robot-listen 0.62s ease-in-out infinite alternate; }
+.robot { position: absolute; z-index: 5; top: 54.5%; left: 64%; width: 216rpx; height: 318rpx; }
+.robot > image { width: 100%; height: 100%; }
+.robot.speaking { animation: robot-talk 0.48s ease-in-out infinite alternate; }
+.robot-mouth { position: absolute; top: 39.1%; left: 42.6%; width: 31rpx; height: 6rpx; border-radius: 6rpx; background: #152638; box-shadow: 0 1rpx 0 rgba(255, 255, 255, 0.28); transform-origin: center; animation: mouth-talk 0.22s ease-in-out infinite alternate; }
 .speech-bubble { position: absolute; z-index: 6; top: 54.2%; left: 18.5%; width: 356rpx; height: 212rpx; }
-.speech-bubble.bubble-pop { animation: bubble-pop 0.62s cubic-bezier(0.22, 1.15, 0.36, 1) both; transform-origin: 80% 100%; }
+.speech-bubble.bubble-speaking { animation: bubble-talk 0.72s ease-in-out infinite alternate; transform-origin: 80% 100%; }
 .speech-bubble image { position: absolute; inset: 0; width: 100%; height: 100%; }
-.bubble-copy { position: absolute; top: 54rpx; left: 32rpx; width: 280rpx; color: #1687d1; font-size: 30rpx; font-weight: 700; line-height: 1.35; text-align: center; animation: bubble-copy-in 0.34s 0.28s ease both; }
+.bubble-copy { position: absolute; top: 54rpx; left: 32rpx; width: 280rpx; color: #1687d1; font-size: 30rpx; font-weight: 700; line-height: 1.35; text-align: center; }
+
+.countdown-layer { position: absolute; z-index: 20; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(35, 147, 208, 0.18); pointer-events: none; }
+.countdown-card { display: flex; width: 310rpx; height: 310rpx; flex-direction: column; align-items: center; justify-content: center; border: 8rpx solid rgba(255, 255, 255, 0.94); border-radius: 50%; background: rgba(58, 165, 221, 0.88); box-shadow: 0 12rpx 0 rgba(26, 113, 177, 0.24), 0 0 0 18rpx rgba(255, 255, 255, 0.26); }
+.countdown-number { display: block; color: #fff; font-size: 174rpx; font-weight: 900; line-height: 0.9; text-shadow: 0 8rpx 0 #197eba; animation: center-countdown 0.8s cubic-bezier(0.22, 1.2, 0.38, 1) both; }
+.countdown-copy { display: block; margin-top: 18rpx; color: #eaf9ff; font-size: 32rpx; font-weight: 800; }
 
 .controls { position: absolute; z-index: 8; top: 80.2%; left: 5.3%; display: flex; width: 89.4%; justify-content: space-between; }
 .control-button { position: relative; width: 160rpx; height: 160rpx; }
@@ -708,11 +719,9 @@ onUnmounted(() => {
 .record-button.preparing { transform: translateY(-6rpx) scale(1.03); }
 .record-button.recording { transform: translateY(-8rpx) scale(1.06); filter: drop-shadow(0 8rpx 12rpx rgba(225, 57, 57, 0.34)); animation: recording-button-pulse 0.9s ease-in-out infinite alternate; }
 .record-button.recording .control-icon { opacity: 0.42; }
-.record-countdown { position: absolute; z-index: 4; inset: 0; color: #fff; font-size: 74rpx; font-weight: 900; line-height: 160rpx; text-align: center; text-shadow: 0 4rpx 0 #b34b47; animation: countdown-pop 0.8s ease both; }
 .recording-wash { position: absolute; z-index: 2; top: 12rpx; right: 12rpx; bottom: 12rpx; left: 12rpx; border-radius: 50%; background: rgba(238, 69, 69, 0.28); animation: recording-wash 0.9s ease-in-out infinite alternate; pointer-events: none; }
 .recording-ring { position: absolute; z-index: 3; top: -18rpx; right: -18rpx; bottom: -18rpx; left: -18rpx; border: 8rpx solid rgba(239, 67, 67, 0.96); border-radius: 50%; box-shadow: 0 0 0 0 rgba(239, 67, 67, 0.55); animation: record-ring 1.15s ease-out infinite; pointer-events: none; }
 .recording-state-label { position: absolute; z-index: 7; top: -58rpx; left: 50%; min-width: 178rpx; height: 44rpx; padding: 0 18rpx; border: 3rpx solid #fff; border-radius: 24rpx; color: #fff; font-size: 23rpx; font-weight: 900; line-height: 38rpx; text-align: center; white-space: nowrap; transform: translateX(-50%); box-shadow: 0 5rpx 0 rgba(95, 113, 128, 0.22); pointer-events: none; }
-.preparing-label { background: #f1a93b; animation: status-pop 0.32s ease both; }
 .recording-label { background: #e84e4e; animation: status-pop 0.32s ease both, recording-label-blink 1s ease-in-out infinite alternate; }
 .saving-label { background: #538fba; animation: status-pop 0.32s ease both; }
 .recording-badge { position: absolute; z-index: 5; right: -24rpx; bottom: -20rpx; display: flex; min-width: 114rpx; height: 46rpx; align-items: center; justify-content: center; gap: 8rpx; padding: 0 14rpx; border: 3rpx solid #fff; border-radius: 24rpx; background: #e84e4e; color: #fff; font-size: 24rpx; font-weight: 900; line-height: 1; box-shadow: 0 4rpx 0 rgba(135, 57, 57, 0.26); }
@@ -731,17 +740,16 @@ onUnmounted(() => {
 .complete-restart { margin-top: 34rpx; height: 82rpx; border-radius: 41rpx; background: #38a9dd; color: #fff; font-size: 30rpx; font-weight: 800; line-height: 82rpx; box-shadow: 0 6rpx 0 #2383b5; }
 
 @keyframes pass-pulse { from { opacity: 0.45; transform: scale(0.94); } to { opacity: 1; transform: scale(1.08); } }
-@keyframes countdown-pop { 0% { opacity: 0; transform: scale(1.5); } 70% { opacity: 1; transform: scale(0.94); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes center-countdown { 0% { opacity: 0; transform: scale(1.42); } 62% { opacity: 1; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
 @keyframes status-pop { from { opacity: 0; transform: translate(-50%, 8rpx) scale(0.8); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
 @keyframes recording-button-pulse { from { transform: translateY(-8rpx) scale(1.03); } to { transform: translateY(-8rpx) scale(1.08); } }
 @keyframes recording-wash { from { opacity: 0.42; transform: scale(0.92); } to { opacity: 0.82; transform: scale(1.04); } }
 @keyframes recording-label-blink { from { opacity: 0.76; } to { opacity: 1; } }
 @keyframes record-ring { 0% { opacity: 0.9; transform: scale(0.92); box-shadow: 0 0 0 0 rgba(239, 67, 67, 0.46); } 70% { opacity: 0.28; transform: scale(1.08); box-shadow: 0 0 0 22rpx rgba(239, 67, 67, 0); } 100% { opacity: 0; transform: scale(1.12); box-shadow: 0 0 0 26rpx rgba(239, 67, 67, 0); } }
 @keyframes record-dot { from { opacity: 0.45; transform: scale(0.82); } to { opacity: 1; transform: scale(1.12); } }
-@keyframes robot-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8rpx); } }
-@keyframes robot-listen { from { transform: translateY(0) rotate(-2deg); } to { transform: translateY(-10rpx) rotate(2deg); } }
-@keyframes bubble-pop { 0% { opacity: 0; transform: scale(0.62); } 62% { opacity: 1; transform: scale(1.06); } 100% { opacity: 1; transform: scale(1); } }
-@keyframes bubble-copy-in { from { opacity: 0; transform: scale(0.72); } to { opacity: 1; transform: scale(1); } }
+@keyframes robot-talk { from { transform: translateY(0) rotate(-1deg); } to { transform: translateY(-5rpx) rotate(1deg); } }
+@keyframes mouth-talk { from { transform: scaleY(1); } to { transform: scaleY(2.1); } }
+@keyframes bubble-talk { from { transform: translateY(0) scale(1); } to { transform: translateY(-5rpx) scale(1.015); } }
 
 @media (max-height: 700px) {
   .word-panel { top: 27.5%; }
