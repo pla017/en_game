@@ -9,11 +9,13 @@
       <text class="page-title">单词拼图</text>
 
       <view class="progress-wrap" aria-label="游戏进度">
-        <image class="progress-track" :src="progressBackgroundUrl" mode="aspectFill" />
-        <view class="progress-fill-clip" :style="{ width: `${progressPercent}%` }">
-          <image class="progress-fill" :src="progressFillUrl" mode="scaleToFill" />
+        <view class="progress-rail">
+          <image class="progress-track" :src="progressBackgroundUrl" mode="scaleToFill" />
+          <view class="progress-fill-clip" :style="{ width: `${progressPercent}%` }">
+            <image class="progress-fill" :src="progressFillUrl" mode="scaleToFill" />
+          </view>
+          <image class="progress-circle" :src="progressCircleUrl" :style="{ left: `${progressPercent}%` }" mode="aspectFit" />
         </view>
-        <image class="progress-circle" :src="progressCircleUrl" :style="{ left: `${progressPercent}%` }" mode="aspectFit" />
         <text class="progress-label">{{ currentRound + 1 }} / {{ rounds.length }}</text>
       </view>
 
@@ -509,30 +511,47 @@ onUnmounted(() => {
   height: 9.2%;
 }
 
+.progress-rail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  aspect-ratio: 460 / 42;
+}
+
 .progress-track,
 .progress-fill {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
-  height: 25%;
+  height: 100%;
+}
+
+.progress-track {
+  z-index: 1;
 }
 
 .progress-fill-clip {
   position: absolute;
   top: 0;
   left: 0;
-  height: 25%;
+  z-index: 2;
+  height: 100%;
   overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #c9e867 0%, #9cca3e 100%);
   transition: width 0.3s ease;
 }
 
 .progress-circle {
   position: absolute;
-  top: -1%;
+  top: 50%;
+  z-index: 3;
   width: 7.8%;
-  height: 25%;
-  transform: translateX(-50%);
+  aspect-ratio: 1;
+  height: auto;
+  transform: translate(-50%, -50%);
   transition: left 0.3s ease;
 }
 
