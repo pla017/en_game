@@ -32,24 +32,16 @@
       >
         <image class="drum-image" :src="drum.image" mode="aspectFit" />
         <text class="word-label" :class="`word-${drum.position}`">{{ drum.word }}</text>
-        <view v-if="hitDrumId === drum.id" class="drum-impact success-impact">
-          <view v-for="ring in 3" :key="ring" class="impact-ring" :class="`ring-${ring}`" />
-          <view class="impact-flash" />
-        </view>
-        <view v-if="wrongDrumId === drum.id" class="drum-impact wrong-impact">
-          <view v-for="ring in 3" :key="ring" class="impact-ring" :class="`ring-${ring}`" />
-          <view class="impact-flash" />
-        </view>
         <image
           v-if="hitDrumId === drum.id"
-          class="burst success-burst"
-          :src="rightBurstUrl"
+          class="burst impact-mark"
+          :src="impactMarkUrl"
           mode="aspectFit"
         />
         <image
-          v-if="wrongDrumId === drum.id"
-          class="burst wrong-burst"
-          :src="wrongBurstUrl"
+          v-if="hitDrumId === drum.id"
+          class="burst impact-rays"
+          :src="impactRaysUrl"
           mode="aspectFit"
         />
       </view>
@@ -105,9 +97,9 @@ import playUrl from './assets/game4_play.png';
 import progressBgUrl from './assets/game4_progress_bar_bg.png';
 import progressFillUrl from './assets/game4_progress_bar_ing.png';
 import returnUrl from './assets/game4_return.png';
-import rightBurstUrl from './assets/game4_boom1.png';
+import impactMarkUrl from './assets/game4_boom1.png';
 import titleUrl from './assets/game4_tit.png';
-import wrongBurstUrl from './assets/game4_boom2.png';
+import impactRaysUrl from './assets/game4_boom2.png';
 import drum1Url from './assets/game4_drum1.png';
 import drum2Url from './assets/game4_drum2.png';
 import drum3Url from './assets/game4_drum3.png';
@@ -275,16 +267,18 @@ function tapDrum(drum: Drum) {
   if (isLocked.value || isComplete.value) return;
   playEffect('drum');
   if (drum.word === rounds[currentRound.value].word) {
+    const isLastRound = currentRound.value === rounds.length - 1;
     hasAnswered.value = true;
     hitDrumId.value = drum.id;
     feedback.value = 'correct';
-    updateProgress((currentRound.value + 1) * 20, currentRound.value === rounds.length - 1);
+    updateProgress((currentRound.value + 1) * 20, isLastRound);
     setTimeout(() => playEffect('correct'), 90);
     vibrate('medium');
     feedbackTimer = setTimeout(() => {
       feedback.value = null;
       feedbackTimer = null;
-    }, 1650);
+      if (isLastRound) isComplete.value = true;
+    }, isLastRound ? 1250 : 1650);
     return;
   }
 
@@ -304,7 +298,7 @@ function replayWord() {
 }
 
 function nextRound() {
-  if (!hasAnswered.value || isComplete.value) return;
+  if (!hasAnswered.value || isComplete.value || feedback.value) return;
   clearFeedback();
   if (currentRound.value === rounds.length - 1) {
     isComplete.value = true;
@@ -479,7 +473,7 @@ onUnmounted(() => {
 
 .drum-stage {
   position: absolute;
-  top: 398rpx;
+  top: 576rpx;
   left: 0;
   width: 100%;
   height: 770rpx;
@@ -510,7 +504,7 @@ onUnmounted(() => {
 .word-label {
   position: absolute;
   z-index: 4;
-  top: -30rpx;
+  top: -28rpx;
   left: 50%;
   color: #fff;
   font-size: 34rpx;
@@ -522,11 +516,11 @@ onUnmounted(() => {
   transform: translateX(-50%) rotate(-10deg);
 }
 
-.word-left-top { top: -16rpx; transform: translateX(-50%) rotate(13deg); }
+.word-left-top { top: -20rpx; left: 58%; transform: translateX(-50%) rotate(13deg); }
 .word-center-top { top: -34rpx; transform: translateX(-50%) rotate(-5deg); }
-.word-right-top { top: -18rpx; transform: translateX(-50%) rotate(-17deg); }
-.word-left-bottom { top: -18rpx; transform: translateX(-50%) rotate(17deg); }
-.word-center-bottom { top: -28rpx; transform: translateX(-50%) rotate(0); }
+.word-right-top { top: -20rpx; left: 42%; transform: translateX(-50%) rotate(-17deg); }
+.word-left-bottom { top: -12rpx; left: 56%; transform: translateX(-50%) rotate(17deg); }
+.word-center-bottom { top: -22rpx; transform: translateX(-50%) rotate(0); }
 
 .drum-left-top { top: 110rpx; left: 15rpx; }
 .drum-center-top { top: 20rpx; left: 260rpx; }
@@ -536,25 +530,13 @@ onUnmounted(() => {
 
 .burst {
   position: absolute;
-  z-index: 6;
-  top: -50rpx;
-  right: -24rpx;
-  width: 116rpx;
-  height: 150rpx;
-  animation: burst-pop 0.65s ease both;
+  z-index: 7;
+  pointer-events: none;
+  animation: burst-pop 0.54s cubic-bezier(0.22, 1.15, 0.36, 1) both;
 }
 
-.wrong-burst { filter: hue-rotate(180deg) saturate(1.15); }
-
-.drum-impact { position: absolute; z-index: 3; inset: -42rpx; pointer-events: none; }
-.impact-ring { position: absolute; top: 50%; left: 50%; width: 80rpx; height: 50rpx; border: 8rpx solid; border-radius: 50%; opacity: 0; transform: translate(-50%, -50%) scale(0.2); animation: impact-ring 0.62s ease-out both; }
-.impact-ring.ring-2 { animation-delay: 0.09s; }
-.impact-ring.ring-3 { animation-delay: 0.18s; }
-.impact-flash { position: absolute; top: 50%; left: 50%; width: 130rpx; height: 86rpx; border-radius: 50%; opacity: 0; transform: translate(-50%, -50%); animation: impact-flash 0.42s ease-out both; }
-.success-impact .impact-ring { border-color: #fff25a; box-shadow: 0 0 18rpx rgba(255, 217, 50, 0.95); }
-.success-impact .impact-flash { background: rgba(255, 239, 100, 0.82); }
-.wrong-impact .impact-ring { border-color: #ff7d63; box-shadow: 0 0 18rpx rgba(243, 84, 63, 0.82); }
-.wrong-impact .impact-flash { background: rgba(255, 104, 76, 0.58); }
+.impact-mark { top: 28rpx; left: 56rpx; width: 94rpx; height: 120rpx; }
+.impact-rays { top: 58rpx; right: 18rpx; width: 86rpx; height: 116rpx; }
 
 .feedback-overlay {
   position: absolute;
@@ -595,6 +577,7 @@ onUnmounted(() => {
 
 .complete-layer {
   position: absolute;
+  z-index: 40;
   inset: 0;
   display: flex;
   align-items: center;
@@ -622,15 +605,13 @@ onUnmounted(() => {
 @keyframes drum-hit { 0%, 100% { transform: scale(1); } 20% { transform: scale(0.84) rotate(-5deg); } 48% { transform: scale(1.2) rotate(4deg); } 70% { transform: scale(0.97) rotate(-1deg); } }
 @keyframes drum-surface-hit { 0%, 100% { filter: brightness(1); } 34% { filter: brightness(1.5) saturate(1.3); } }
 @keyframes drum-shake { 0%, 100% { transform: translateX(0); } 16%, 48% { transform: translateX(-20rpx) rotate(-5deg); } 32%, 64% { transform: translateX(20rpx) rotate(5deg); } 78% { transform: translateX(-8rpx); } }
-@keyframes burst-pop { 0% { opacity: 0; transform: scale(0.2) rotate(-28deg); } 46% { opacity: 1; transform: scale(1.22) rotate(10deg); } 100% { opacity: 1; transform: scale(1); } }
-@keyframes impact-ring { 0% { opacity: 0.95; transform: translate(-50%, -50%) scale(0.2); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(3.1); } }
-@keyframes impact-flash { 0% { opacity: 0.95; transform: translate(-50%, -50%) scale(0.4); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.55); } }
+@keyframes burst-pop { 0% { opacity: 0; transform: scale(0.3) rotate(-22deg); } 56% { opacity: 1; transform: scale(1.16) rotate(8deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes feedback-pop { 0% { opacity: 0; transform: scale(0.38) translateY(34rpx); } 65% { opacity: 1; transform: scale(1.12) translateY(-8rpx); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
 @keyframes wrong-feedback-pop { 0% { opacity: 0; transform: scale(0.52); } 56% { opacity: 1; transform: scale(1.12) rotate(-3deg); } 72% { transform: scale(0.98) rotate(2deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes feedback-halo { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 100% { opacity: 0.42; transform: translate(-50%, -50%) scale(1); } }
 
 @media (max-height: 1450rpx) {
-  .drum-stage { top: 382rpx; transform: scale(0.92); transform-origin: top center; }
+  .drum-stage { top: 540rpx; transform: scale(0.88); transform-origin: top center; }
   .bottom-controls { bottom: max(28rpx, env(safe-area-inset-bottom)); }
 }
 </style>

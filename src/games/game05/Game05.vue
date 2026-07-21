@@ -37,7 +37,6 @@
           class="answer-slot"
           :class="{ filled: Boolean(letter), active: index === answerSlots.length - 1 && !letter }"
           @tap="removeLetter(index)"
-          @click="removeLetter(index)"
         >
           <image :src="letter ? tileForLetter(letter).image : emptySlotUrl" mode="aspectFit" />
           <text v-if="letter" class="slot-letter">{{ letter }}</text>
@@ -58,7 +57,6 @@
           :style="tileStyle(tile)"
           @touchstart.stop="handleTileTouchStart(tile, $event)"
           @tap.stop="tapTile(tile)"
-          @click.stop="tapTile(tile)"
         >
           <image :src="tile.image" mode="aspectFit" />
           <text class="tile-letter">{{ tile.letter }}</text>
@@ -66,7 +64,7 @@
       </view>
 
       <view class="bottom-actions">
-        <image class="action-button" :src="playUrl" mode="aspectFit" @tap="speakWord" />
+        <image class="action-button" :class="{ playing: isSpeaking }" :src="playUrl" mode="aspectFit" @tap="speakWord" />
         <image
           class="action-button next-action"
           :class="{ disabled: !isRoundSolved && !isComplete }"
@@ -77,14 +75,15 @@
       </view>
 
       <view v-if="isComplete" class="complete-layer">
-        <view class="complete-panel">
-          <image class="complete-banner" :src="completeUrl" mode="aspectFit" />
-          <view class="complete-stars">
+        <image class="complete-banner" :src="completeUrl" mode="aspectFit" />
+        <view class="complete-details">
+          <text class="time-line">闯关用时：{{ completionTime }}</text>
+          <view class="stars-line">
+            <text>获得星星：</text>
             <image v-for="star in 3" :key="star" :src="starUrl" mode="aspectFit" />
           </view>
-          <text class="complete-copy">你完成了全部 5 个单词</text>
-          <view class="restart-button" @tap="restart">再玩一次</view>
         </view>
+        <image class="next-step-button" :src="nextStepUrl" mode="aspectFit" @tap="nextRound" />
       </view>
     </view>
   </view>
@@ -97,6 +96,7 @@ import bottomBackgroundUrl from './assets/game5_bottom.png';
 import completeUrl from './assets/game5_excise.png';
 import emptySlotUrl from './assets/game5_kuang.png';
 import nextUrl from './assets/game5_next.png';
+import nextStepUrl from './assets/game5_next_step.png';
 import playUrl from './assets/game5_play.png';
 import progressBackgroundUrl from './assets/game5_progress_bar_bg.png';
 import progressCircleUrl from './assets/game5_progress_bar_circle.png';
@@ -109,6 +109,11 @@ import topBackgroundUrl from './assets/game5_top_bg.png';
 import topCardUrl from './assets/game5_top.png';
 import topGrassUrl from './assets/game5_top2.png';
 import wrongAnswerUrl from './assets/game5_answer_wrong.png';
+import appleAudioUrl from './audio/apple.mp3';
+import houseAudioUrl from './audio/house.mp3';
+import plantAudioUrl from './audio/plant.mp3';
+import tigerAudioUrl from './audio/tiger.mp3';
+import zebraAudioUrl from './audio/zebra.mp3';
 import word01Url from './assets/game5_word01.png';
 import word02Url from './assets/game5_word02.png';
 import word03Url from './assets/game5_word03.png';
@@ -166,9 +171,14 @@ const isComplete = ref(false);
 const draggingId = ref<number | null>(null);
 const dragStart = ref({ x: 0, y: 0 });
 const dragOffset = ref({ x: 0, y: 0 });
+const isSpeaking = ref(false);
+const completionTime = ref('0分00秒');
 
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 let nextTimer: ReturnType<typeof setTimeout> | null = null;
+let completionTimer: ReturnType<typeof setTimeout> | null = null;
+let wordAudio: UniApp.InnerAudioContext | null = null;
+let roundStartedAt = Date.now();
 
 const currentRoundData = computed(() => rounds[currentRound.value]);
 const progressPercent = computed(() => (currentRound.value / rounds.length) * 100);
@@ -178,6 +188,13 @@ const allLetters = computed(() => [
   ...currentRoundData.value.extraLetters
 ].map((letter, id) => ({ id, letter, image: tileImages[id] })));
 const availableTiles = computed(() => allLetters.value.filter((tile) => !usedTileIds.value.includes(tile.id)));
+const wordAudioUrls: Record<string, string> = {
+  apple: appleAudioUrl,
+  house: houseAudioUrl,
+  plant: plantAudioUrl,
+  tiger: tigerAudioUrl,
+  zebra: zebraAudioUrl
+};
 
 function tileForLetter(letter: string) {
   return allLetters.value.find((tile) => tile.letter === letter) || allLetters.value[0];
@@ -209,6 +226,7 @@ function resetRound() {
   feedback.value = null;
   draggingId.value = null;
   dragOffset.value = { x: 0, y: 0 };
+  roundStartedAt = Date.now();
 }
 
 function tapTile(tile: LetterTile) {
@@ -217,7 +235,7 @@ function tapTile(tile: LetterTile) {
 }
 
 function handleTileTouchStart(tile: LetterTile, event: any) {
-  if (isComplete.value || feedback.value === 'correct') return;
+  if (isComplete.value || feedback.value) return;
   const touch = event.touches?.[0];
   draggingId.value = tile.id;
   dragStart.value = { x: touch?.clientX || 0, y: touch?.clientY || 0 };
@@ -289,6 +307,12 @@ function placeTile(tile: LetterTile) {
       feedback.value = null;
       feedbackTimer = null;
     }, 1350);
+    if (completionTimer) clearTimeout(completionTimer);
+    completionTime.value = formatElapsed(Date.now() - roundStartedAt);
+    completionTimer = setTimeout(() => {
+      isComplete.value = true;
+      completionTimer = null;
+    }, 620);
   }
 }
 
@@ -302,27 +326,47 @@ function removeLetter(index: number) {
 }
 
 function nextRound() {
-  if (isComplete.value) {
+  if (!isComplete.value && !isRoundSolved.value) return;
+  clearCompletionTimer();
+  if (currentRound.value === rounds.length - 1) {
     restart();
     return;
   }
-  if (!isRoundSolved.value) return;
-  if (currentRound.value === rounds.length - 1) {
-    isComplete.value = true;
-    return;
-  }
+  isComplete.value = false;
   currentRound.value += 1;
   resetRound();
   speakAfterDelay(280);
 }
 
 function speakWord() {
+  const word = currentRoundData.value.word;
+  isSpeaking.value = true;
+  if (!wordAudio) {
+    wordAudio = uni.createInnerAudioContext();
+    wordAudio.obeyMuteSwitch = false;
+    wordAudio.onEnded(() => {
+      isSpeaking.value = false;
+    });
+    wordAudio.onError(() => {
+      isSpeaking.value = false;
+      speakWithSystemVoice(word);
+    });
+  }
+  wordAudio.stop();
+  wordAudio.src = wordAudioUrls[word];
+  wordAudio.play();
+}
+
+function speakWithSystemVoice(word: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(currentRoundData.value.word);
+  const utterance = new SpeechSynthesisUtterance(word);
   utterance.lang = 'en-US';
   utterance.rate = 0.72;
   utterance.pitch = 1.05;
+  utterance.onend = () => {
+    isSpeaking.value = false;
+  };
   window.speechSynthesis.speak(utterance);
 }
 
@@ -341,8 +385,23 @@ function clearFeedbackTimer() {
   }
 }
 
+function clearCompletionTimer() {
+  if (completionTimer) {
+    clearTimeout(completionTimer);
+    completionTimer = null;
+  }
+}
+
+function formatElapsed(milliseconds: number) {
+  const totalSeconds = Math.max(1, Math.round(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}分${seconds.toString().padStart(2, '0')}秒`;
+}
+
 function restart() {
   resetProgress();
+  clearCompletionTimer();
   currentRound.value = 0;
   isComplete.value = false;
   resetRound();
@@ -360,7 +419,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   clearFeedbackTimer();
+  clearCompletionTimer();
   if (nextTimer) clearTimeout(nextTimer);
+  wordAudio?.destroy();
+  wordAudio = null;
   if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
 });
 </script>
@@ -379,7 +441,8 @@ onUnmounted(() => {
 
 .game-stage {
   position: relative;
-  width: min(100vw, calc(100vh * 750 / 1624));
+  width: 100vw;
+  max-width: 46.1823vh;
   height: 100vh;
   overflow: hidden;
   background: #fcfcf0;
@@ -431,7 +494,7 @@ onUnmounted(() => {
   left: 35.5%;
   width: 34%;
   color: #181b18;
-  font-size: min(5.15vw, 2.38vh);
+  font-size: 2.38vh;
   font-weight: 800;
   line-height: 1;
   text-align: center;
@@ -479,7 +542,7 @@ onUnmounted(() => {
   left: 0;
   width: 100%;
   color: #161a17;
-  font-size: min(5.1vw, 2.36vh);
+  font-size: 2.36vh;
   font-weight: 500;
   line-height: 1;
   text-align: center;
@@ -508,7 +571,7 @@ onUnmounted(() => {
 
 .word-spelling {
   color: #171b17;
-  font-size: min(7.1vw, 3.28vh);
+  font-size: 3.28vh;
   font-weight: 800;
   line-height: 1;
 }
@@ -523,7 +586,7 @@ onUnmounted(() => {
 
 .word-meaning {
   color: #171b17;
-  font-size: min(5.2vw, 2.4vh);
+  font-size: 2.4vh;
   font-weight: 800;
   line-height: 1;
 }
@@ -531,7 +594,7 @@ onUnmounted(() => {
 .word-description {
   margin-top: 4.4%;
   color: #171b17;
-  font-size: min(3.5vw, 1.62vh);
+  font-size: 1.62vh;
   line-height: 1.15;
   white-space: nowrap;
 }
@@ -555,7 +618,7 @@ onUnmounted(() => {
   border-radius: 999px;
   background: #fff3cc;
   color: #332b1c;
-  font-size: min(3.4vw, 1.57vh);
+  font-size: 1.57vh;
   line-height: 1.3;
   text-align: center;
   white-space: nowrap;
@@ -589,7 +652,7 @@ onUnmounted(() => {
   left: 0;
   width: 100%;
   color: #4f4f4a;
-  font-size: min(7vw, 3.23vh);
+  font-size: 3.23vh;
   font-weight: 800;
   line-height: 1;
   text-align: center;
@@ -646,7 +709,7 @@ onUnmounted(() => {
   left: 0;
   width: 100%;
   color: #777872;
-  font-size: min(7vw, 3.23vh);
+  font-size: 3.23vh;
   font-weight: 700;
   line-height: 1;
   text-align: center;
@@ -677,6 +740,10 @@ onUnmounted(() => {
   height: 100%;
 }
 
+.action-button.playing {
+  animation: play-pulse 0.8s ease-in-out infinite alternate;
+}
+
 .next-action.disabled {
   opacity: 0.48;
   filter: saturate(0.5);
@@ -686,56 +753,59 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: rgba(97, 126, 32, 0.34);
 }
 
-.complete-panel {
-  width: 82%;
-  padding: 7% 5% 6%;
-  border: 4px solid #fff;
-  border-radius: 24px;
-  background: #fffdf0;
-  box-shadow: 0 10px 0 rgba(111, 135, 37, 0.25);
-  text-align: center;
-}
-
 .complete-banner {
+  position: absolute;
+  top: 25.5%;
+  left: 0;
   width: 100%;
-  height: auto;
+  height: 19.8%;
 }
 
-.complete-stars {
-  display: flex;
-  justify-content: center;
-  gap: 5%;
-  margin: 3% 0;
-}
-
-.complete-stars image {
-  width: 13%;
-  aspect-ratio: 1;
-}
-
-.complete-copy {
-  display: block;
-  color: #637a22;
-  font-size: min(3.8vw, 1.76vh);
-  font-weight: 700;
-}
-
-.restart-button {
-  width: 44%;
-  margin: 5% auto 0;
-  padding: 3% 0;
-  border-radius: 999px;
-  background: #ff7045;
-  color: #fff;
-  font-size: min(3.7vw, 1.71vh);
+.complete-details {
+  position: absolute;
+  top: 45.5%;
+  left: 0;
+  width: 100%;
+  color: #fff62e;
+  font-size: 2.13vh;
   font-weight: 800;
-  box-shadow: 0 4px 0 #d85231;
+  line-height: 1.2;
+  text-align: center;
+  text-shadow: 1px 2px 0 rgba(82, 64, 13, 0.24);
+}
+
+.time-line,
+.stars-line {
+  display: block;
+}
+
+.stars-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3%;
+  margin-top: 2.2%;
+}
+
+.stars-line image {
+  width: 4.3vh;
+  height: 4.3vh;
+}
+
+.next-step-button {
+  position: absolute;
+  top: 81.5%;
+  left: 25.5%;
+  width: 49%;
+  height: 6.9%;
+}
+
+@keyframes play-pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.05); }
 }
 
 .feedback-pop-enter-active,

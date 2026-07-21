@@ -53,23 +53,15 @@
 
         <view
           class="control-button record-button tap-image"
-          :class="{ recording: isRecording, preparing: isPreparing, passed: hasPassed }"
+          :class="{ recording: isRecording, preparing: isPreparing }"
           @tap.stop="toggleRecording"
         >
           <image :src="recordBgUrl" mode="aspectFit" />
           <image class="control-icon" :src="recordIconUrl" mode="aspectFit" />
           <view v-if="isRecording" class="recording-wash" />
           <view v-if="isRecording" class="recording-ring" />
-          <view v-if="isRecording" class="recording-state-label recording-label">录音中 · 剩余 {{ recordingRemaining }} 秒</view>
-          <view v-if="isRecording" class="recording-badge">
-            <view class="record-dot" />
-            <text>{{ recordingRemaining }}s</text>
-          </view>
-          <view v-if="isRecording" class="recording-progress">
-            <view :style="{ width: `${recordingPercent}%` }" />
-          </view>
+          <view v-if="isRecording" class="recording-state-label recording-label">录音中 · 再次点击结束</view>
           <view v-if="isFinalizingRecording" class="recording-state-label saving-label">保存中...</view>
-          <view v-if="hasPassed" class="pass-glow" />
         </view>
 
         <view
@@ -165,13 +157,13 @@ const countdown = ref(3);
 const isRecording = ref(false);
 const isRobotSpeaking = ref(false);
 const isFinalizingRecording = ref(false);
-const recordingSeconds = ref(0);
+const canRecord = ref(false);
 const hasPassed = ref(false);
 const bubbleText = ref('单词音频听完啦，请点击录音按钮跟读两次！');
 const bubbleVersion = ref(0);
 const isComplete = ref(false);
 const elapsedSeconds = ref(0);
-const recordedFilePaths = ref<string[]>([]);
+const recordingsByWord = ref<Record<string, string[]>>({});
 const { updateProgress } = useGameProgress('game-03');
 
 let recognition: SpeechRecognitionLike | null = null;
@@ -184,10 +176,11 @@ let recordingChunks: Blob[] = [];
 let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
 let maxRecordTimer: ReturnType<typeof setTimeout> | null = null;
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
-let recordingTicker: ReturnType<typeof setInterval> | null = null;
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 let recordingStartedAt = 0;
+let recordingWord = '';
+let pendingFileCapture: Promise<void> = Promise.resolve();
 let wordAudio: UniApp.InnerAudioContext | null = null;
 let practiceFinalized = false;
 let speechMatched = false;
@@ -195,8 +188,6 @@ let studyStartedAt = 0;
 
 const currentWord = computed(() => words[currentIndex.value]);
 const progressPercent = computed(() => ((currentIndex.value + 1) / words.length) * 100);
-const recordingPercent = computed(() => Math.min(100, (recordingSeconds.value / 15) * 100));
-const recordingRemaining = computed(() => Math.max(0, 15 - recordingSeconds.value));
 const formattedTime = computed(() => {
   const minutes = Math.floor(elapsedSeconds.value / 60).toString().padStart(2, '0');
   const seconds = (elapsedSeconds.value % 60).toString().padStart(2, '0');
@@ -224,13 +215,14 @@ function getSpeechRecognition() {
 }
 
 function playOriginal() {
-  if (isRecording.value || isComplete.value || isPreviewing) return;
+  if (isRecording.value || isPreparing.value || isFinalizingRecording.value || isComplete.value || isPreviewing) return;
   startWordPreview();
 }
 
 function startWordPreview() {
   previewPlayCount = 0;
   isPreviewing = true;
+  canRecord.value = false;
   isRobotSpeaking.value = false;
   setBubbleText('正在播放原音，请认真听哦。');
   if (previewFallbackTimer) clearTimeout(previewFallbackTimer);
@@ -243,11 +235,18 @@ function startWordPreview() {
 function finishWordPreview() {
   isPreviewing = false;
   isRobotSpeaking.value = false;
+  canRecord.value = true;
   if (previewFallbackTimer) {
     clearTimeout(previewFallbackTimer);
     previewFallbackTimer = null;
   }
-  setBubbleText('单词音频听完啦，请点击录音按钮跟读两次！');
+  if (hasPassed.value) {
+    setBubbleText('音频播放完成，可以重新录音，系统只保留最近两次。');
+  } else if (practiceCount.value > 0) {
+    setBubbleText('音频播放完成，可以开始第 2 次跟读。');
+  } else {
+    setBubbleText('单词音频听完啦，请点击录音按钮跟读。');
+  }
 }
 
 function playWordAudio(audioUrl: string) {
@@ -275,7 +274,8 @@ function playWordAudio(audioUrl: string) {
         clearTimeout(previewFallbackTimer);
         previewFallbackTimer = null;
       }
-      setBubbleText('音频播放失败，请再点一次试试。');
+      canRecord.value = true;
+      setBubbleText('音频播放失败，可以点击录音按钮继续练习。');
       speak(currentWord.value.word);
     });
   }
@@ -298,7 +298,11 @@ function speak(value: string) {
 }
 
 function beginRecording() {
-  if (isRecording.value || isPreparing.value || isFinalizingRecording.value || hasPassed.value || isComplete.value || isPreviewing) return;
+  if (isRecording.value || isPreparing.value || isFinalizingRecording.value || isComplete.value) return;
+  if (isPreviewing || !canRecord.value) {
+    setBubbleText('请先完整听两遍单词，再开始录音。');
+    return;
+  }
   isPreparing.value = true;
   countdown.value = 3;
   setBubbleText('准备开始，3 秒后进入录音。');
@@ -319,18 +323,16 @@ function beginRecording() {
 function startRecordingNow() {
   isRecording.value = true;
   isFinalizingRecording.value = false;
-  recordingSeconds.value = 0;
+  canRecord.value = false;
   practiceFinalized = false;
   awaitingRecorderStop = false;
   speechMatched = false;
   recordingStartedAt = Date.now();
+  recordingWord = currentWord.value.word;
+  pendingFileCapture = Promise.resolve();
   setBubbleText('正在录音，点击红色按钮结束。');
   startSpeechRecognition();
   startMediaRecording();
-  if (recordingTicker) clearInterval(recordingTicker);
-  recordingTicker = setInterval(() => {
-    recordingSeconds.value = Math.min(15, Math.floor((Date.now() - recordingStartedAt) / 1000));
-  }, 250);
   if (maxRecordTimer) clearTimeout(maxRecordTimer);
   maxRecordTimer = setTimeout(() => finishRecording(true), 15000);
 }
@@ -343,11 +345,6 @@ function finishRecording(autoStop = false) {
   if ((!isRecording.value && !awaitingRecorderStop) || isFinalizingRecording.value) return;
   isFinalizingRecording.value = true;
   isRecording.value = false;
-  if (recordingTicker) {
-    clearInterval(recordingTicker);
-    recordingTicker = null;
-  }
-  recordingSeconds.value = Math.min(15, Math.max(1, Math.ceil((Date.now() - recordingStartedAt) / 1000)));
   stopSpeechRecognition();
   if (maxRecordTimer) {
     clearTimeout(maxRecordTimer);
@@ -370,7 +367,9 @@ function finishRecording(autoStop = false) {
   stopMediaRecording();
 
   const elapsed = Date.now() - recordingStartedAt;
-  fallbackTimer = setTimeout(() => completePractice(), Math.max(280, 650 - elapsed));
+  fallbackTimer = setTimeout(() => {
+    void pendingFileCapture.finally(() => completePractice());
+  }, Math.max(280, 650 - elapsed));
 }
 
 function cancelRecordingPreparation() {
@@ -436,8 +435,10 @@ function startMediaRecording() {
         recorderManager.onStop((result: { tempFilePath?: string }) => {
           awaitingRecorderStop = false;
           usingUniRecorder = false;
-          if (result?.tempFilePath) captureRecordingFile(result.tempFilePath);
-          completePractice();
+          pendingFileCapture = result?.tempFilePath
+            ? captureRecordingFile(result.tempFilePath, recordingWord)
+            : Promise.resolve();
+          void pendingFileCapture.finally(() => completePractice());
         });
         recorderManager.onError(() => {
           awaitingRecorderStop = false;
@@ -476,7 +477,7 @@ function startMediaRecording() {
     mediaRecorder.onstop = () => {
       if (recordingChunks.length) {
         const blob = new Blob(recordingChunks, { type: mediaRecorder?.mimeType || 'audio/webm' });
-        captureRecordingFile(URL.createObjectURL(blob));
+        pendingFileCapture = captureRecordingFile(URL.createObjectURL(blob), recordingWord);
       }
       recordingChunks = [];
     };
@@ -494,53 +495,71 @@ function stopMediaRecording() {
   recordStream = null;
 }
 
-function captureRecordingFile(path: string) {
-  if (!path) return;
+function captureRecordingFile(path: string, word: string): Promise<void> {
+  if (!path || !word) return Promise.resolve();
   if (!path.startsWith('blob:')) {
-    try {
-      uni.saveFile({
-        tempFilePath: path,
-        success: ({ savedFilePath }) => persistRecordingPath(savedFilePath || path),
-        fail: () => persistRecordingPath(path)
-      });
-      return;
-    } catch {
-      // Keep the temporary path when persistent storage is unavailable.
-    }
+    return new Promise((resolve) => {
+      try {
+        uni.saveFile({
+          tempFilePath: path,
+          success: ({ savedFilePath }) => {
+            persistRecordingPath(savedFilePath || path, word);
+            resolve();
+          },
+          fail: () => {
+            persistRecordingPath(path, word);
+            resolve();
+          }
+        });
+      } catch {
+        persistRecordingPath(path, word);
+        resolve();
+      }
+    });
   }
-  persistRecordingPath(path);
+  persistRecordingPath(path, word);
+  return Promise.resolve();
 }
 
-function persistRecordingPath(path: string) {
-  if (recordedFilePaths.value.includes(path)) return;
-  recordedFilePaths.value = [...recordedFilePaths.value, path];
-  uni.setStorageSync('game03-recordings', JSON.stringify(recordedFilePaths.value));
-  // Configure VITE_RECORD_UPLOAD_URL when a server endpoint is available.
+function persistRecordingPath(path: string, word: string) {
+  const latest = [...(recordingsByWord.value[word] || []).filter((item) => item !== path), path].slice(-2);
+  recordingsByWord.value = { ...recordingsByWord.value, [word]: latest };
+  uni.setStorageSync('game03-recordings', JSON.stringify(recordingsByWord.value));
+}
+
+function submitLatestRecordings(word: string) {
   const recordUploadUrl = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_RECORD_UPLOAD_URL;
-  if (recordUploadUrl && !path.startsWith('blob:') && typeof uni.uploadFile === 'function') {
+  const recordings = recordingsByWord.value[word] || [];
+  if (!recordUploadUrl || typeof uni.uploadFile !== 'function') return;
+  recordings.forEach((path, index) => {
+    if (path.startsWith('blob:')) return;
     uni.uploadFile({
       url: recordUploadUrl,
       filePath: path,
       name: 'file',
       fileType: 'audio',
-      formData: { gameId: 'game-03', word: currentWord.value.word },
+      formData: { gameId: 'game-03', word, attempt: String(index + 1), total: String(recordings.length) },
       fail: () => setBubbleText('录音已保存到本地，后台上传稍后重试。')
     });
-  }
+  });
 }
 
 function completePractice() {
   if (practiceFinalized || isComplete.value) return;
   practiceFinalized = true;
-  const nextPracticeCount = Math.min(2, practiceCount.value + 1);
-  practiceCount.value = nextPracticeCount;
   isRecording.value = false;
   isFinalizingRecording.value = false;
 
-  if (nextPracticeCount < 2) {
+  if (hasPassed.value) {
+    setBubbleText('新的录音已保存，系统只保留最近两次。');
+    return;
+  }
+
+  practiceCount.value += 1;
+  if (practiceCount.value < 2) {
     setBubbleText(speechMatched
-      ? '读对啦，第 1 次跟读完成，再读 1 次就可以进入下一个单词！'
-      : '第 1 次跟读完成，再读 1 次就可以进入下一个单词！');
+      ? '读对啦，第 1 次跟读完成。请点击播放，完整听两遍后再录一次。'
+      : '第 1 次跟读完成。请点击播放，完整听两遍后再录一次。');
     return;
   }
 
@@ -548,16 +567,20 @@ function completePractice() {
   completedWords.value = Math.min(words.length, completedWords.value + 1);
   updateProgress(Math.round((completedWords.value / words.length) * 100), completedWords.value === words.length);
   if (completedWords.value === words.length) {
-    elapsedSeconds.value = Math.max(1, Math.round((Date.now() - studyStartedAt) / 1000));
-    setBubbleText('全部单词跟读完成，太棒啦！');
-    setTimeout(() => { isComplete.value = true; }, 520);
+    setBubbleText('两次跟读完成。可重新听两遍后补录，或点击右侧箭头完成挑战。');
   } else {
-    setBubbleText('两次跟读都完成啦，点击右侧箭头继续！');
+    setBubbleText('两次跟读完成。可重新听两遍后补录，或点击右侧箭头继续。');
   }
 }
 
 function nextWord() {
-  if (!hasPassed.value || isComplete.value || currentIndex.value >= words.length - 1) return;
+  if (!hasPassed.value || isComplete.value) return;
+  submitLatestRecordings(currentWord.value.word);
+  if (currentIndex.value >= words.length - 1) {
+    elapsedSeconds.value = Math.max(1, Math.round((Date.now() - studyStartedAt) / 1000));
+    isComplete.value = true;
+    return;
+  }
   stopSpeechRecognition();
   stopMediaRecording();
   if (fallbackTimer) clearTimeout(fallbackTimer);
@@ -566,6 +589,7 @@ function nextWord() {
   hasPassed.value = false;
   isRecording.value = false;
   isFinalizingRecording.value = false;
+  canRecord.value = false;
   speechMatched = false;
   startWordPreview();
 }
@@ -576,9 +600,7 @@ function restart() {
   if (fallbackTimer) clearTimeout(fallbackTimer);
   if (maxRecordTimer) clearTimeout(maxRecordTimer);
   if (countdownTimer) clearInterval(countdownTimer);
-  if (recordingTicker) clearInterval(recordingTicker);
   countdownTimer = null;
-  recordingTicker = null;
   isPreparing.value = false;
   if (previewTimer) {
     clearTimeout(previewTimer);
@@ -592,14 +614,14 @@ function restart() {
   completedWords.value = 0;
   practiceCount.value = 0;
   countdown.value = 3;
-  recordingSeconds.value = 0;
   hasPassed.value = false;
   isRecording.value = false;
   isFinalizingRecording.value = false;
+  canRecord.value = false;
   isComplete.value = false;
   elapsedSeconds.value = 0;
-  recordedFilePaths.value = [];
-  uni.setStorageSync('game03-recordings', JSON.stringify([]));
+  recordingsByWord.value = {};
+  uni.setStorageSync('game03-recordings', JSON.stringify({}));
   studyStartedAt = Date.now();
   startWordPreview();
 }
@@ -628,7 +650,6 @@ onUnmounted(() => {
   if (fallbackTimer) clearTimeout(fallbackTimer);
   if (maxRecordTimer) clearTimeout(maxRecordTimer);
   if (countdownTimer) clearInterval(countdownTimer);
-  if (recordingTicker) clearInterval(recordingTicker);
   if (previewTimer) clearTimeout(previewTimer);
   if (previewFallbackTimer) clearTimeout(previewFallbackTimer);
   if (clockTimer) clearInterval(clockTimer);
@@ -700,7 +721,7 @@ onUnmounted(() => {
 .robot { position: absolute; z-index: 5; top: 54.5%; left: 64%; width: 216rpx; height: 318rpx; }
 .robot > image { width: 100%; height: 100%; }
 .robot.speaking { animation: robot-talk 0.48s ease-in-out infinite alternate; }
-.robot-mouth { position: absolute; top: 39.1%; left: 42.6%; width: 31rpx; height: 6rpx; border-radius: 6rpx; background: #152638; box-shadow: 0 1rpx 0 rgba(255, 255, 255, 0.28); transform-origin: center; animation: mouth-talk 0.22s ease-in-out infinite alternate; }
+.robot-mouth { position: absolute; top: 39%; left: 53%; width: 15rpx; height: 4rpx; border-radius: 50%; background: #111820; transform-origin: center; animation: mouth-talk 0.22s ease-in-out infinite alternate; }
 .speech-bubble { position: absolute; z-index: 6; top: 54.2%; left: 18.5%; width: 356rpx; height: 212rpx; }
 .speech-bubble.bubble-speaking { animation: bubble-talk 0.72s ease-in-out infinite alternate; transform-origin: 80% 100%; }
 .speech-bubble image { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -724,12 +745,7 @@ onUnmounted(() => {
 .recording-state-label { position: absolute; z-index: 7; top: -58rpx; left: 50%; min-width: 178rpx; height: 44rpx; padding: 0 18rpx; border: 3rpx solid #fff; border-radius: 24rpx; color: #fff; font-size: 23rpx; font-weight: 900; line-height: 38rpx; text-align: center; white-space: nowrap; transform: translateX(-50%); box-shadow: 0 5rpx 0 rgba(95, 113, 128, 0.22); pointer-events: none; }
 .recording-label { background: #e84e4e; animation: status-pop 0.32s ease both, recording-label-blink 1s ease-in-out infinite alternate; }
 .saving-label { background: #538fba; animation: status-pop 0.32s ease both; }
-.recording-badge { position: absolute; z-index: 5; right: -24rpx; bottom: -20rpx; display: flex; min-width: 114rpx; height: 46rpx; align-items: center; justify-content: center; gap: 8rpx; padding: 0 14rpx; border: 3rpx solid #fff; border-radius: 24rpx; background: #e84e4e; color: #fff; font-size: 24rpx; font-weight: 900; line-height: 1; box-shadow: 0 4rpx 0 rgba(135, 57, 57, 0.26); }
-.record-dot { width: 14rpx; height: 14rpx; border-radius: 50%; background: #fff; animation: record-dot 0.8s ease-in-out infinite alternate; }
-.recording-progress { position: absolute; z-index: 5; right: 16rpx; bottom: 8rpx; left: 16rpx; height: 11rpx; overflow: hidden; border: 2rpx solid rgba(255, 255, 255, 0.9); border-radius: 7rpx; background: rgba(145, 43, 43, 0.38); }
-.recording-progress view { height: 100%; border-radius: inherit; background: #e84e4e; transition: width 0.25s linear; }
 .next-button.disabled { opacity: 0.48; filter: grayscale(0.45); }
-.pass-glow { position: absolute; top: -14rpx; right: -14rpx; bottom: -14rpx; left: -14rpx; border: 5rpx solid rgba(255, 222, 70, 0.95); border-radius: 48rpx; box-shadow: 0 0 22rpx 7rpx rgba(255, 224, 66, 0.85); animation: pass-pulse 0.9s ease-in-out infinite alternate; pointer-events: none; }
 
 .complete-layer { position: absolute; z-index: 30; inset: 0; display: flex; align-items: center; justify-content: center; padding: 48rpx; background: rgba(29, 124, 186, 0.24); }
 .complete-panel { width: min(570rpx, calc(100vw - 80rpx)); padding: 52rpx 40rpx 42rpx; border: 7rpx solid #fff; border-radius: 24rpx; background: #e5fbff; box-shadow: 0 14rpx 0 rgba(31, 128, 184, 0.24); text-align: center; }
@@ -739,16 +755,14 @@ onUnmounted(() => {
 .complete-stars { display: flex; gap: 6rpx; color: #f3a42b; font-size: 48rpx; line-height: 1; }.complete-stars .muted { color: #b9d9df; }
 .complete-restart { margin-top: 34rpx; height: 82rpx; border-radius: 41rpx; background: #38a9dd; color: #fff; font-size: 30rpx; font-weight: 800; line-height: 82rpx; box-shadow: 0 6rpx 0 #2383b5; }
 
-@keyframes pass-pulse { from { opacity: 0.45; transform: scale(0.94); } to { opacity: 1; transform: scale(1.08); } }
 @keyframes center-countdown { 0% { opacity: 0; transform: scale(1.42); } 62% { opacity: 1; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
 @keyframes status-pop { from { opacity: 0; transform: translate(-50%, 8rpx) scale(0.8); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
 @keyframes recording-button-pulse { from { transform: translateY(-8rpx) scale(1.03); } to { transform: translateY(-8rpx) scale(1.08); } }
 @keyframes recording-wash { from { opacity: 0.42; transform: scale(0.92); } to { opacity: 0.82; transform: scale(1.04); } }
 @keyframes recording-label-blink { from { opacity: 0.76; } to { opacity: 1; } }
 @keyframes record-ring { 0% { opacity: 0.9; transform: scale(0.92); box-shadow: 0 0 0 0 rgba(239, 67, 67, 0.46); } 70% { opacity: 0.28; transform: scale(1.08); box-shadow: 0 0 0 22rpx rgba(239, 67, 67, 0); } 100% { opacity: 0; transform: scale(1.12); box-shadow: 0 0 0 26rpx rgba(239, 67, 67, 0); } }
-@keyframes record-dot { from { opacity: 0.45; transform: scale(0.82); } to { opacity: 1; transform: scale(1.12); } }
 @keyframes robot-talk { from { transform: translateY(0) rotate(-1deg); } to { transform: translateY(-5rpx) rotate(1deg); } }
-@keyframes mouth-talk { from { transform: scaleY(1); } to { transform: scaleY(2.1); } }
+@keyframes mouth-talk { from { height: 4rpx; transform: scaleX(0.9); } to { height: 10rpx; transform: scaleX(1.04); } }
 @keyframes bubble-talk { from { transform: translateY(0) scale(1); } to { transform: translateY(-5rpx) scale(1.015); } }
 
 @media (max-height: 700px) {
