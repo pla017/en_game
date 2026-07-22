@@ -66,10 +66,16 @@
       </view>
 
       <view class="bottom-actions">
-        <image class="action-button" :class="{ playing: isSpeaking }" :src="playUrl" mode="aspectFit" @tap="speakWord" />
+        <image
+          class="action-button"
+          :class="{ playing: isSpeaking, disabled: isGuiding || isPlayingCompletionAudio }"
+          :src="playUrl"
+          mode="aspectFit"
+          @tap="speakWord"
+        />
         <image
           class="action-button next-action"
-          :class="{ disabled: !isRoundSolved && !isComplete }"
+          :class="{ disabled: ((!isRoundSolved && !isComplete) || isPlayingCompletionAudio) }"
           :src="nextUrl"
           mode="aspectFit"
           @tap="nextRound"
@@ -112,6 +118,23 @@ import topCardUrl from './assets/game5_top.png';
 import topGrassUrl from './assets/game5_top2.png';
 import wrongAnswerUrl from './assets/game5_answer_wrong.png';
 import appleAudioUrl from './audio/apple.mp3';
+import openingGuideAudioUrl from './audio/opening-guide.mp3';
+import letterAAudioUrl from './audio/letter-a.mp3';
+import letterBAudioUrl from './audio/letter-b.mp3';
+import letterEAudioUrl from './audio/letter-e.mp3';
+import letterGAudioUrl from './audio/letter-g.mp3';
+import letterHAudioUrl from './audio/letter-h.mp3';
+import letterIAudioUrl from './audio/letter-i.mp3';
+import letterLAudioUrl from './audio/letter-l.mp3';
+import letterNAudioUrl from './audio/letter-n.mp3';
+import letterOAudioUrl from './audio/letter-o.mp3';
+import letterPAudioUrl from './audio/letter-p.mp3';
+import letterRAudioUrl from './audio/letter-r.mp3';
+import letterSAudioUrl from './audio/letter-s.mp3';
+import letterTAudioUrl from './audio/letter-t.mp3';
+import letterUAudioUrl from './audio/letter-u.mp3';
+import letterZAudioUrl from './audio/letter-z.mp3';
+import letterPlaceAudioUrl from '../game02/audio/select.mp3';
 import houseAudioUrl from './audio/house.mp3';
 import plantAudioUrl from './audio/plant.mp3';
 import tigerAudioUrl from './audio/tiger.mp3';
@@ -174,13 +197,23 @@ const draggingId = ref<number | null>(null);
 const dragStart = ref({ x: 0, y: 0 });
 const dragOffset = ref({ x: 0, y: 0 });
 const isSpeaking = ref(false);
+const isGuiding = ref(false);
 const completionTime = ref('0分00秒');
 
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 let nextTimer: ReturnType<typeof setTimeout> | null = null;
+let openingGuideTimer: ReturnType<typeof setTimeout> | null = null;
 let completionTimer: ReturnType<typeof setTimeout> | null = null;
 let wordAudio: UniApp.InnerAudioContext | null = null;
-let roundStartedAt = Date.now();
+let openingGuideAudio: UniApp.InnerAudioContext | null = null;
+let letterPlaceAudio: UniApp.InnerAudioContext | null = null;
+let letterSequenceAudio: UniApp.InnerAudioContext | null = null;
+let completionWordAudio: UniApp.InnerAudioContext | null = null;
+let completionSequenceToken = 0;
+let completionLetterIndex = 0;
+let completionSequenceWord = '';
+const isPlayingCompletionAudio = ref(false);
+let gameStartedAt = Date.now();
 
 const currentRoundData = computed(() => rounds[currentRound.value]);
 const progressPercent = computed(() => (currentRound.value / rounds.length) * 100);
@@ -196,6 +229,23 @@ const wordAudioUrls: Record<string, string> = {
   plant: plantAudioUrl,
   tiger: tigerAudioUrl,
   zebra: zebraAudioUrl
+};
+const letterAudioUrls: Record<string, string> = {
+  a: letterAAudioUrl,
+  b: letterBAudioUrl,
+  e: letterEAudioUrl,
+  g: letterGAudioUrl,
+  h: letterHAudioUrl,
+  i: letterIAudioUrl,
+  l: letterLAudioUrl,
+  n: letterNAudioUrl,
+  o: letterOAudioUrl,
+  p: letterPAudioUrl,
+  r: letterRAudioUrl,
+  s: letterSAudioUrl,
+  t: letterTAudioUrl,
+  u: letterUAudioUrl,
+  z: letterZAudioUrl
 };
 
 function tileForLetter(letter: string) {
@@ -228,16 +278,15 @@ function resetRound() {
   feedback.value = null;
   draggingId.value = null;
   dragOffset.value = { x: 0, y: 0 };
-  roundStartedAt = Date.now();
 }
 
 function tapTile(tile: LetterTile) {
-  if (draggingId.value !== null || isComplete.value || feedback.value) return;
+  if (draggingId.value !== null || isGuiding.value || isPlayingCompletionAudio.value || isComplete.value || feedback.value) return;
   placeTile(tile);
 }
 
 function handleTileTouchStart(tile: LetterTile, event: any) {
-  if (isComplete.value || feedback.value) return;
+  if (isGuiding.value || isPlayingCompletionAudio.value || isComplete.value || feedback.value) return;
   const touch = event.touches?.[0];
   draggingId.value = tile.id;
   dragStart.value = { x: touch?.clientX || 0, y: touch?.clientY || 0 };
@@ -283,12 +332,13 @@ function isTouchInAnswerArea(touch: any) {
 }
 
 function placeTile(tile: LetterTile) {
-  if (usedTileIds.value.includes(tile.id) || feedback.value || isComplete.value) return;
+  if (usedTileIds.value.includes(tile.id) || isGuiding.value || isPlayingCompletionAudio.value || feedback.value || isComplete.value) return;
   const targetIndex = answerSlots.value.findIndex((letter) => letter === null);
   if (targetIndex < 0) return;
 
   usedTileIds.value = [...usedTileIds.value, tile.id];
   answerSlots.value[targetIndex] = tile.letter;
+  playLetterPlaceEffect();
   if (tile.letter !== currentRoundData.value.word[targetIndex]) {
     feedback.value = 'wrong';
     clearFeedbackTimer();
@@ -304,22 +354,25 @@ function placeTile(tile: LetterTile) {
   if (isRoundSolved.value) {
     feedback.value = 'correct';
     updateProgress((currentRound.value + 1) * 20, currentRound.value === rounds.length - 1);
+    playCompletionAudioSequence(currentRoundData.value.word);
     clearFeedbackTimer();
     feedbackTimer = setTimeout(() => {
       feedback.value = null;
       feedbackTimer = null;
     }, 1350);
-    if (completionTimer) clearTimeout(completionTimer);
-    completionTime.value = formatElapsed(Date.now() - roundStartedAt);
-    completionTimer = setTimeout(() => {
-      isComplete.value = true;
-      completionTimer = null;
-    }, 620);
+    if (currentRound.value === rounds.length - 1) {
+      if (completionTimer) clearTimeout(completionTimer);
+      completionTime.value = formatElapsed(Date.now() - gameStartedAt);
+      completionTimer = setTimeout(() => {
+        isComplete.value = true;
+        completionTimer = null;
+      }, 620);
+    }
   }
 }
 
 function removeLetter(index: number) {
-  if (!answerSlots.value[index] || feedback.value === 'correct' || isComplete.value) return;
+  if (!answerSlots.value[index] || isGuiding.value || isPlayingCompletionAudio.value || feedback.value === 'correct' || isComplete.value) return;
   const letter = answerSlots.value[index];
   const tile = allLetters.value.find((item) => item.letter === letter && usedTileIds.value.includes(item.id));
   if (tile) usedTileIds.value = usedTileIds.value.filter((id) => id !== tile.id);
@@ -328,7 +381,8 @@ function removeLetter(index: number) {
 }
 
 function nextRound() {
-  if (!isComplete.value && !isRoundSolved.value) return;
+  if (isPlayingCompletionAudio.value || (!isComplete.value && !isRoundSolved.value)) return;
+  stopCompletionAudioSequence();
   clearCompletionTimer();
   if (currentRound.value === rounds.length - 1) {
     restart();
@@ -340,7 +394,81 @@ function nextRound() {
   speakAfterDelay(280);
 }
 
+function playLetterPlaceEffect() {
+  if (!letterPlaceAudio) {
+    letterPlaceAudio = uni.createInnerAudioContext();
+    letterPlaceAudio.obeyMuteSwitch = false;
+  }
+  letterPlaceAudio.stop();
+  letterPlaceAudio.src = letterPlaceAudioUrl;
+  letterPlaceAudio.play();
+}
+
+function finishCompletionAudio(token: number) {
+  if (token !== completionSequenceToken) return;
+  isPlayingCompletionAudio.value = false;
+  isSpeaking.value = false;
+}
+
+function advanceCompletionAudio(token: number, word: string) {
+  if (token !== completionSequenceToken || !isPlayingCompletionAudio.value) return;
+  if (completionLetterIndex < word.length) {
+    const letter = word[completionLetterIndex];
+    completionLetterIndex += 1;
+    if (!letterSequenceAudio) return finishCompletionAudio(token);
+    letterSequenceAudio.stop();
+    letterSequenceAudio.src = letterAudioUrls[letter];
+    letterSequenceAudio.play();
+    return;
+  }
+
+  if (!completionWordAudio) return finishCompletionAudio(token);
+  completionWordAudio.stop();
+  completionWordAudio.src = wordAudioUrls[word];
+  completionWordAudio.play();
+}
+
+function playCompletionAudioSequence(word: string) {
+  completionSequenceToken += 1;
+  const token = completionSequenceToken;
+  completionLetterIndex = 0;
+  completionSequenceWord = word;
+  isPlayingCompletionAudio.value = true;
+  isSpeaking.value = true;
+  wordAudio?.stop();
+
+  if (!letterSequenceAudio) {
+    letterSequenceAudio = uni.createInnerAudioContext();
+    letterSequenceAudio.obeyMuteSwitch = false;
+    letterSequenceAudio.onEnded(() => advanceCompletionAudio(completionSequenceToken, completionSequenceWord));
+    letterSequenceAudio.onError(() => advanceCompletionAudio(completionSequenceToken, completionSequenceWord));
+  }
+  if (!completionWordAudio) {
+    completionWordAudio = uni.createInnerAudioContext();
+    completionWordAudio.obeyMuteSwitch = false;
+    completionWordAudio.onEnded(() => finishCompletionAudio(completionSequenceToken));
+    completionWordAudio.onError(() => finishCompletionAudio(completionSequenceToken));
+  }
+  letterSequenceAudio.stop();
+  completionWordAudio.stop();
+  advanceCompletionAudio(token, word);
+}
+
+function stopCompletionAudioSequence() {
+  completionSequenceToken += 1;
+  completionLetterIndex = 0;
+  completionSequenceWord = '';
+  isPlayingCompletionAudio.value = false;
+  letterSequenceAudio?.stop();
+  completionWordAudio?.stop();
+}
+
 function speakWord() {
+  if (isGuiding.value || isPlayingCompletionAudio.value) return;
+  playCurrentWord();
+}
+
+function playCurrentWord() {
   const word = currentRoundData.value.word;
   isSpeaking.value = true;
   if (!wordAudio) {
@@ -357,6 +485,44 @@ function speakWord() {
   wordAudio.stop();
   wordAudio.src = wordAudioUrls[word];
   wordAudio.play();
+}
+
+function finishOpeningGuide() {
+  if (!isGuiding.value) return;
+  isGuiding.value = false;
+  speakAfterDelay(140);
+}
+
+function playOpeningGuideAfterDelay(delay: number) {
+  stopOpeningGuide();
+  if (nextTimer) {
+    clearTimeout(nextTimer);
+    nextTimer = null;
+  }
+  wordAudio?.stop();
+  isSpeaking.value = false;
+  isGuiding.value = true;
+  openingGuideTimer = setTimeout(() => {
+    openingGuideTimer = null;
+    if (!openingGuideAudio) {
+      openingGuideAudio = uni.createInnerAudioContext();
+      openingGuideAudio.obeyMuteSwitch = false;
+      openingGuideAudio.onEnded(finishOpeningGuide);
+      openingGuideAudio.onError(finishOpeningGuide);
+    }
+    openingGuideAudio.stop();
+    openingGuideAudio.src = openingGuideAudioUrl;
+    openingGuideAudio.play();
+  }, delay);
+}
+
+function stopOpeningGuide() {
+  if (openingGuideTimer) {
+    clearTimeout(openingGuideTimer);
+    openingGuideTimer = null;
+  }
+  isGuiding.value = false;
+  openingGuideAudio?.stop();
 }
 
 function speakWithSystemVoice(word: string) {
@@ -402,12 +568,15 @@ function formatElapsed(milliseconds: number) {
 }
 
 function restart() {
+  stopCompletionAudioSequence();
+  stopOpeningGuide();
   resetProgress();
   clearCompletionTimer();
   currentRound.value = 0;
   isComplete.value = false;
+  gameStartedAt = Date.now();
   resetRound();
-  speakAfterDelay(280);
+  playOpeningGuideAfterDelay(360);
 }
 
 function goBack() {
@@ -415,16 +584,27 @@ function goBack() {
 }
 
 onMounted(() => {
+  gameStartedAt = Date.now();
   resetRound();
-  speakAfterDelay(520);
+  playOpeningGuideAfterDelay(520);
 });
 
 onUnmounted(() => {
   clearFeedbackTimer();
   clearCompletionTimer();
+  stopOpeningGuide();
+  stopCompletionAudioSequence();
   if (nextTimer) clearTimeout(nextTimer);
   wordAudio?.destroy();
   wordAudio = null;
+  openingGuideAudio?.destroy();
+  openingGuideAudio = null;
+  letterPlaceAudio?.destroy();
+  letterPlaceAudio = null;
+  letterSequenceAudio?.destroy();
+  letterSequenceAudio = null;
+  completionWordAudio?.destroy();
+  completionWordAudio = null;
   if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
 });
 </script>
@@ -625,6 +805,7 @@ onUnmounted(() => {
   width: 26%;
   height: 18%;
   z-index: 2;
+  animation: robot-float 2.8s ease-in-out infinite;
 }
 
 .instruction-pill {
@@ -641,6 +822,7 @@ onUnmounted(() => {
   line-height: 1.3;
   text-align: center;
   white-space: nowrap;
+  animation: instruction-breathe 2.2s ease-in-out infinite;
 }
 
 .answer-slots {
@@ -682,6 +864,10 @@ onUnmounted(() => {
   content: url('./assets/game5_kuang2.png');
 }
 
+.answer-slot.filled {
+  animation: slot-fill 0.3s cubic-bezier(0.2, 1.25, 0.4, 1) both;
+}
+
 .feedback {
   position: absolute;
   left: 50%;
@@ -715,12 +901,16 @@ onUnmounted(() => {
 .letter-tile image {
   width: 100%;
   height: 100%;
+  animation: tile-bob 2.8s ease-in-out infinite;
 }
 
 .letter-tile.dragging {
   opacity: 0.82;
   filter: drop-shadow(0 8px 4px rgba(54, 74, 18, 0.25));
 }
+
+.letter-tile.dragging image,
+.letter-tile.dragging .tile-letter { animation: none; }
 
 .tile-letter {
   position: absolute;
@@ -734,7 +924,18 @@ onUnmounted(() => {
   text-align: center;
   text-transform: lowercase;
   text-shadow: 1px 1px 0 rgba(255,255,255,0.45);
+  animation: tile-bob 2.8s ease-in-out infinite;
 }
+
+.tile-1 image, .tile-1 .tile-letter { animation-delay: 0.22s; }
+.tile-2 image, .tile-2 .tile-letter { animation-delay: 0.42s; }
+.tile-3 image, .tile-3 .tile-letter { animation-delay: 0.64s; }
+.tile-4 image, .tile-4 .tile-letter { animation-delay: 0.82s; }
+.tile-5 image, .tile-5 .tile-letter { animation-delay: 1.02s; }
+.tile-6 image, .tile-6 .tile-letter { animation-delay: 1.2s; }
+.tile-7 image, .tile-7 .tile-letter { animation-delay: 1.38s; }
+.tile-8 image, .tile-8 .tile-letter { animation-delay: 1.58s; }
+.tile-9 image, .tile-9 .tile-letter { animation-delay: 1.78s; }
 
 .tile-0 .tile-letter,
 .tile-9 .tile-letter { color: #f3612e; }
@@ -763,6 +964,7 @@ onUnmounted(() => {
   animation: play-pulse 0.8s ease-in-out infinite alternate;
 }
 
+.action-button.disabled,
 .next-action.disabled {
   opacity: 0.48;
   filter: saturate(0.5);
@@ -825,6 +1027,27 @@ onUnmounted(() => {
 @keyframes play-pulse {
   from { transform: scale(1); }
   to { transform: scale(1.05); }
+}
+
+@keyframes tile-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes slot-fill {
+  0% { transform: scale(0.78); }
+  72% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes instruction-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.025); }
+}
+
+@keyframes robot-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
 }
 
 .feedback-pop-enter-active,

@@ -108,8 +108,10 @@ import drum4Url from './assets/game4_drum4.png';
 import drum5Url from './assets/game4_drum5.png';
 import bananaAudioUrl from './audio/banana.mp3';
 import correctAudioUrl from './audio/correct.mp3';
+import correctVoiceAudioUrl from './audio/correct-voice.mp3';
 import drumHitAudioUrl from './audio/drum-hit.mp3';
 import mangoAudioUrl from './audio/mango.mp3';
+import openingGuideAudioUrl from './audio/opening-guide.mp3';
 import orangeAudioUrl from './audio/orange.mp3';
 import pearAudioUrl from './audio/pear.mp3';
 import plumAudioUrl from './audio/plum.mp3';
@@ -168,16 +170,21 @@ const hitDrumId = ref<string | null>(null);
 const wrongDrumId = ref<string | null>(null);
 const hasAnswered = ref(false);
 const isSpeaking = ref(false);
+const isGuiding = ref(false);
 const isComplete = ref(false);
 const wrongAttempts = ref(0);
 
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
+let correctVoiceTimer: ReturnType<typeof setTimeout> | null = null;
+let openingGuideTimer: ReturnType<typeof setTimeout> | null = null;
 let speechTimer: ReturnType<typeof setTimeout> | null = null;
 let wordAudio: UniApp.InnerAudioContext | null = null;
+let correctVoiceAudio: UniApp.InnerAudioContext | null = null;
+let openingGuideAudio: UniApp.InnerAudioContext | null = null;
 const effectAudios: Partial<Record<EffectName, UniApp.InnerAudioContext>> = {};
 
 const progressPercent = computed(() => (currentRound.value / rounds.length) * 100);
-const isLocked = computed(() => hasAnswered.value || Boolean(feedback.value));
+const isLocked = computed(() => isGuiding.value || hasAnswered.value || Boolean(feedback.value));
 const instruction = computed(() => {
   if (isSpeaking.value) return '认真听，找出对应的单词';
   if (hasAnswered.value) return '答对啦！点击右下角继续';
@@ -192,6 +199,30 @@ function buildDrums() {
     position,
     image: drumImages[position]
   }));
+}
+
+function finishOpeningGuide() {
+  if (!isGuiding.value) return;
+  isGuiding.value = false;
+  if (currentRound.value === 0 && !isComplete.value) sayWord();
+}
+
+function playOpeningGuide() {
+  isGuiding.value = true;
+  isSpeaking.value = true;
+  if (speechTimer) {
+    clearTimeout(speechTimer);
+    speechTimer = null;
+  }
+  if (!openingGuideAudio) {
+    openingGuideAudio = uni.createInnerAudioContext();
+    openingGuideAudio.obeyMuteSwitch = false;
+    openingGuideAudio.onEnded(finishOpeningGuide);
+    openingGuideAudio.onError(finishOpeningGuide);
+  }
+  openingGuideAudio.stop();
+  openingGuideAudio.src = openingGuideAudioUrl;
+  openingGuideAudio.play();
 }
 
 function sayWord() {
@@ -260,6 +291,16 @@ function playEffect(effect: EffectName) {
   audio.play();
 }
 
+function playCorrectVoice() {
+  if (!correctVoiceAudio) {
+    correctVoiceAudio = uni.createInnerAudioContext();
+    correctVoiceAudio.obeyMuteSwitch = false;
+  }
+  correctVoiceAudio.stop();
+  correctVoiceAudio.src = correctVoiceAudioUrl;
+  correctVoiceAudio.play();
+}
+
 function tapDrum(drum: Drum) {
   if (isLocked.value || isComplete.value) return;
   playEffect('drum');
@@ -270,6 +311,11 @@ function tapDrum(drum: Drum) {
     feedback.value = 'correct';
     updateProgress((currentRound.value + 1) * 20, isLastRound);
     setTimeout(() => playEffect('correct'), 90);
+    if (correctVoiceTimer) clearTimeout(correctVoiceTimer);
+    correctVoiceTimer = setTimeout(() => {
+      playCorrectVoice();
+      correctVoiceTimer = null;
+    }, 420);
     vibrate('medium');
     feedbackTimer = setTimeout(() => {
       feedback.value = null;
@@ -291,7 +337,7 @@ function tapDrum(drum: Drum) {
 }
 
 function replayWord() {
-  if (!isComplete.value) sayWord();
+  if (!isComplete.value && !isGuiding.value) sayWord();
 }
 
 function nextRound() {
@@ -309,6 +355,9 @@ function nextRound() {
 }
 
 function restart() {
+  isGuiding.value = false;
+  openingGuideAudio?.stop();
+  if (openingGuideTimer) clearTimeout(openingGuideTimer);
   resetProgress();
   currentRound.value = 0;
   hasAnswered.value = false;
@@ -318,7 +367,10 @@ function restart() {
   wrongAttempts.value = 0;
   clearFeedback();
   buildDrums();
-  setTimeout(sayWord, 350);
+  openingGuideTimer = setTimeout(() => {
+    openingGuideTimer = null;
+    playOpeningGuide();
+  }, 350);
 }
 
 function goBack() {
@@ -334,14 +386,24 @@ function vibrate(type: 'light' | 'medium') {
 
 onMounted(() => {
   buildDrums();
-  setTimeout(sayWord, 500);
+  openingGuideTimer = setTimeout(() => {
+    openingGuideTimer = null;
+    playOpeningGuide();
+  }, 500);
 });
 
 onUnmounted(() => {
   clearFeedback();
+  if (correctVoiceTimer) clearTimeout(correctVoiceTimer);
+  if (openingGuideTimer) clearTimeout(openingGuideTimer);
   if (speechTimer) clearTimeout(speechTimer);
+  isGuiding.value = false;
+  openingGuideAudio?.destroy();
+  openingGuideAudio = null;
   wordAudio?.destroy();
   wordAudio = null;
+  correctVoiceAudio?.destroy();
+  correctVoiceAudio = null;
   Object.values(effectAudios).forEach((audio) => audio?.destroy());
   if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
 });
