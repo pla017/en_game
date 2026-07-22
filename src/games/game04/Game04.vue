@@ -44,6 +44,7 @@
           :src="impactRaysUrl"
           mode="aspectFit"
         />
+        <view v-if="hitDrumId === drum.id" class="drumstick" />
       </view>
     </view>
 
@@ -139,7 +140,13 @@ const rounds: Round[] = [
 ];
 
 const positions: Position[] = ['left-top', 'center-top', 'right-top', 'left-bottom', 'center-bottom'];
-const drumImages = [drum1Url, drum2Url, drum3Url, drum4Url, drum5Url];
+const drumImages: Record<Position, string> = {
+  'left-top': drum2Url,
+  'center-top': drum1Url,
+  'right-top': drum5Url,
+  'left-bottom': drum3Url,
+  'center-bottom': drum4Url
+};
 const wordAudioUrls: Record<string, string> = {
   banana: bananaAudioUrl,
   mango: mangoAudioUrl,
@@ -177,23 +184,13 @@ const instruction = computed(() => {
   return '听一听，点击对应单词的鼓面';
 });
 
-function shuffle<T>(items: T[]) {
-  const result = [...items];
-  for (let index = result.length - 1; index > 0; index -= 1) {
-    const targetIndex = Math.floor(Math.random() * (index + 1));
-    [result[index], result[targetIndex]] = [result[targetIndex], result[index]];
-  }
-  return result;
-}
-
 function buildDrums() {
   const round = rounds[currentRound.value];
-  const shuffledPositions = shuffle(positions);
-  drums.value = round.options.map((word, index) => ({
-    id: `${currentRound.value}-${word}`,
-    word,
-    position: shuffledPositions[index],
-    image: drumImages[index]
+  drums.value = positions.map((position, index) => ({
+    id: `${currentRound.value}-${round.options[index]}`,
+    word: round.options[index],
+    position,
+    image: drumImages[position]
   }));
 }
 
@@ -493,7 +490,6 @@ onUnmounted(() => {
 .drum-stage.locked .drum-button { pointer-events: none; }
 .drum-button.is-hit { z-index: 5; animation: drum-hit 0.72s cubic-bezier(0.22, 1.1, 0.36, 1); }
 .drum-button.is-wrong { z-index: 5; animation: drum-shake 0.64s ease; }
-.drum-button.is-hit .drum-image { animation: drum-surface-hit 0.72s ease; }
 .drum-button.is-wrong .drum-image { filter: saturate(1.25) brightness(1.1); }
 
 .drum-image {
@@ -501,36 +497,131 @@ onUnmounted(() => {
   height: 100%;
 }
 
+.drum-left-top .drum-image { transform: scale(1.12); transform-origin: 20% center; }
+.drum-center-top .drum-image { transform: scale(0.96); }
+.drum-left-bottom .drum-image { transform: scaleX(1.2); transform-origin: left center; }
+.drum-center-bottom .drum-image { transform: scale(1.26); transform-origin: left center; }
+
 .word-label {
   position: absolute;
   z-index: 4;
-  top: 48rpx;
   left: 50%;
-  color: #fff;
-  font-size: 34rpx;
-  font-weight: 800;
+  font-family: Arial, sans-serif;
+  font-size: 50rpx;
+  font-weight: 900;
   letter-spacing: 0;
-  line-height: 1.1;
+  line-height: 1;
   white-space: nowrap;
-  text-shadow: -2rpx 0 #f04e47, 0 2rpx #f04e47, 2rpx 0 #f04e47, 0 -2rpx #f04e47, 2rpx 3rpx 0 rgba(149, 61, 47, 0.4);
+  text-shadow:
+    -3rpx -3rpx 0 #fff,
+    3rpx -3rpx 0 #fff,
+    3rpx 3rpx 0 #fff,
+    -3rpx 3rpx 0 #fff,
+    0 5rpx 0 rgba(80, 92, 102, 0.18);
+}
+
+.word-left-top {
+  top: -14rpx;
+  left: 92%;
+  color: #f23879;
+  font-size: 46rpx;
+  transform: translateX(-50%) rotate(14deg);
+}
+
+.word-center-top {
+  top: -42rpx;
+  left: 45%;
+  color: #f3743f;
+  transform: translateX(-50%) rotate(-4deg);
+}
+
+.word-right-top {
+  top: 28rpx;
+  left: 18%;
+  color: #168ae3;
+  text-transform: capitalize;
+  transform: translateX(-50%) rotate(-25deg);
+}
+
+.word-left-bottom {
+  top: 10rpx;
+  left: 98%;
+  color: #20c895;
+  font-size: 46rpx;
+  text-transform: capitalize;
+  transform: translateX(-50%) rotate(24deg);
+}
+
+.word-center-bottom {
+  top: -30rpx;
+  color: #d926b8;
+  text-transform: capitalize;
   transform: translateX(-50%);
 }
 
-.drum-left-top { top: 110rpx; left: 15rpx; }
-.drum-center-top { top: 20rpx; left: 260rpx; }
-.drum-right-top { top: 125rpx; right: 6rpx; }
-.drum-left-bottom { top: 410rpx; left: 66rpx; }
-.drum-center-bottom { top: 455rpx; right: 108rpx; }
+.drum-left-top { top: 178rpx; left: 15rpx; }
+.drum-center-top { top: 40rpx; left: 304rpx; }
+.drum-right-top { top: 239rpx; right: 6rpx; }
+.drum-left-bottom { top: 478rpx; left: 16rpx; }
+.drum-center-bottom { top: 512rpx; right: 183rpx; }
 
 .burst {
   position: absolute;
   z-index: 7;
   pointer-events: none;
-  animation: burst-pop 0.54s cubic-bezier(0.22, 1.15, 0.36, 1) both;
+  animation: burst-pop 0.46s 0.1s cubic-bezier(0.22, 1.15, 0.36, 1) both;
 }
 
-.impact-mark { top: 28rpx; left: 56rpx; width: 94rpx; height: 120rpx; }
-.impact-rays { top: 58rpx; right: 18rpx; width: 86rpx; height: 116rpx; }
+.impact-mark { top: 72rpx; left: 24rpx; width: 70rpx; height: 90rpx; }
+.impact-rays { top: 70rpx; right: 34rpx; width: 62rpx; height: 84rpx; }
+
+.drumstick {
+  position: absolute;
+  z-index: 9;
+  top: 82rpx;
+  left: 90rpx;
+  width: 126rpx;
+  height: 22rpx;
+  border: 5rpx solid #b94b27;
+  border-radius: 14rpx;
+  background: #f6a63a;
+  box-shadow: inset 0 3rpx 0 rgba(255, 222, 112, 0.75), 0 3rpx 0 rgba(126, 55, 29, 0.18);
+  box-sizing: border-box;
+  transform-origin: 0 50%;
+  pointer-events: none;
+  animation: drumstick-strike 0.48s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+}
+
+.drum-center-top .drumstick {
+  top: 72rpx;
+  left: 118rpx;
+  animation-name: drumstick-strike-left;
+}
+
+.drum-center-top .impact-mark { top: 72rpx; left: 50rpx; }
+
+.drum-left-bottom .drumstick {
+  top: 82rpx;
+  left: 126rpx;
+  animation-name: drumstick-strike-side;
+}
+
+.drum-left-bottom .impact-mark { left: 56rpx; }
+
+.drumstick::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 42rpx;
+  height: 42rpx;
+  border: 5rpx solid #b94b27;
+  border-radius: 50%;
+  background: #f6a63a;
+  box-shadow: inset 0 4rpx 0 rgba(255, 222, 112, 0.78);
+  box-sizing: border-box;
+  content: '';
+  transform: translate(-50%, -50%);
+}
 
 .feedback-overlay {
   position: absolute;
@@ -597,9 +688,26 @@ onUnmounted(() => {
 
 @keyframes dot-bounce { 0%, 100% { transform: translateY(0); opacity: 0.3; } 45% { transform: translateY(-7rpx); opacity: 1; } }
 @keyframes drum-hit { 0%, 100% { transform: scale(1); } 20% { transform: scale(0.84) rotate(-5deg); } 48% { transform: scale(1.2) rotate(4deg); } 70% { transform: scale(0.97) rotate(-1deg); } }
-@keyframes drum-surface-hit { 0%, 100% { filter: brightness(1); } 34% { filter: brightness(1.5) saturate(1.3); } }
 @keyframes drum-shake { 0%, 100% { transform: translateX(0); } 16%, 48% { transform: translateX(-20rpx) rotate(-5deg); } 32%, 64% { transform: translateX(20rpx) rotate(5deg); } 78% { transform: translateX(-8rpx); } }
 @keyframes burst-pop { 0% { opacity: 0; transform: scale(0.3) rotate(-22deg); } 56% { opacity: 1; transform: scale(1.16) rotate(8deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
+@keyframes drumstick-strike {
+  0% { opacity: 0; transform: translate(32rpx, -52rpx) rotate(-38deg); }
+  46% { opacity: 1; transform: translate(0, 0) rotate(-57deg); }
+  68% { transform: translate(-3rpx, 4rpx) rotate(-53deg); }
+  100% { opacity: 1; transform: translate(0, 0) rotate(-57deg); }
+}
+@keyframes drumstick-strike-left {
+  0% { opacity: 0; transform: translate(-36rpx, -48rpx) rotate(142deg); }
+  46% { opacity: 1; transform: translate(0, 0) rotate(164deg); }
+  68% { transform: translate(3rpx, 4rpx) rotate(160deg); }
+  100% { opacity: 1; transform: translate(0, 0) rotate(164deg); }
+}
+@keyframes drumstick-strike-side {
+  0% { opacity: 0; transform: translate(-34rpx, -44rpx) rotate(168deg); }
+  46% { opacity: 1; transform: translate(0, 0) rotate(188deg); }
+  68% { transform: translate(3rpx, 3rpx) rotate(184deg); }
+  100% { opacity: 1; transform: translate(0, 0) rotate(188deg); }
+}
 @keyframes feedback-pop { 0% { opacity: 0; transform: scale(0.38) translateY(34rpx); } 65% { opacity: 1; transform: scale(1.12) translateY(-8rpx); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
 @keyframes wrong-feedback-pop { 0% { opacity: 0; transform: scale(0.52); } 56% { opacity: 1; transform: scale(1.12) rotate(-3deg); } 72% { transform: scale(0.98) rotate(2deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes feedback-halo { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 100% { opacity: 0.42; transform: translate(-50%, -50%) scale(1); } }
