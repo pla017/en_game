@@ -504,23 +504,17 @@ onUnmounted(() => {
 .word-label {
   position: absolute;
   z-index: 4;
-  top: -28rpx;
+  top: 48rpx;
   left: 50%;
   color: #fff;
   font-size: 34rpx;
   font-weight: 800;
   letter-spacing: 0;
-  line-height: 1;
+  line-height: 1.1;
   white-space: nowrap;
   text-shadow: -2rpx 0 #f04e47, 0 2rpx #f04e47, 2rpx 0 #f04e47, 0 -2rpx #f04e47, 2rpx 3rpx 0 rgba(149, 61, 47, 0.4);
-  transform: translateX(-50%) rotate(-10deg);
+  transform: translateX(-50%);
 }
-
-.word-left-top { top: -20rpx; left: 58%; transform: translateX(-50%) rotate(13deg); }
-.word-center-top { top: -34rpx; transform: translateX(-50%) rotate(-5deg); }
-.word-right-top { top: -20rpx; left: 42%; transform: translateX(-50%) rotate(-17deg); }
-.word-left-bottom { top: -12rpx; left: 56%; transform: translateX(-50%) rotate(17deg); }
-.word-center-bottom { top: -22rpx; transform: translateX(-50%) rotate(0); }
 
 .drum-left-top { top: 110rpx; left: 15rpx; }
 .drum-center-top { top: 20rpx; left: 260rpx; }

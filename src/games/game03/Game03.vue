@@ -60,7 +60,7 @@
           <image class="control-icon" :src="recordIconUrl" mode="aspectFit" />
           <view v-if="isRecording" class="recording-wash" />
           <view v-if="isRecording" class="recording-ring" />
-          <view v-if="isRecording" class="recording-state-label recording-label">录音中 · 再次点击结束</view>
+          <view v-if="isRecording" class="recording-state-label recording-label">录音中 · {{ recordingSecondsLeft }} 秒</view>
           <view v-if="isFinalizingRecording" class="recording-state-label saving-label">保存中...</view>
         </view>
 
@@ -155,6 +155,7 @@ const practiceCount = ref(0);
 const isPreparing = ref(false);
 const countdown = ref(3);
 const isRecording = ref(false);
+const recordingSecondsLeft = ref(15);
 const isRobotSpeaking = ref(false);
 const isFinalizingRecording = ref(false);
 const canRecord = ref(false);
@@ -176,6 +177,7 @@ let recordingChunks: Blob[] = [];
 let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
 let maxRecordTimer: ReturnType<typeof setTimeout> | null = null;
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
+let recordingCountdownTimer: ReturnType<typeof setInterval> | null = null;
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 let recordingStartedAt = 0;
@@ -328,13 +330,29 @@ function startRecordingNow() {
   awaitingRecorderStop = false;
   speechMatched = false;
   recordingStartedAt = Date.now();
+  recordingSecondsLeft.value = 15;
   recordingWord = currentWord.value.word;
   pendingFileCapture = Promise.resolve();
   setBubbleText('正在录音，点击红色按钮结束。');
   startSpeechRecognition();
   startMediaRecording();
+  startRecordingCountdown();
   if (maxRecordTimer) clearTimeout(maxRecordTimer);
   maxRecordTimer = setTimeout(() => finishRecording(true), 15000);
+}
+
+function startRecordingCountdown() {
+  if (recordingCountdownTimer) clearInterval(recordingCountdownTimer);
+  recordingCountdownTimer = setInterval(() => {
+    const elapsed = Date.now() - recordingStartedAt;
+    recordingSecondsLeft.value = Math.max(0, Math.ceil((15000 - elapsed) / 1000));
+  }, 250);
+}
+
+function stopRecordingCountdown() {
+  if (recordingCountdownTimer) clearInterval(recordingCountdownTimer);
+  recordingCountdownTimer = null;
+  recordingSecondsLeft.value = 15;
 }
 
 function finishRecording(autoStop = false) {
@@ -345,6 +363,7 @@ function finishRecording(autoStop = false) {
   if ((!isRecording.value && !awaitingRecorderStop) || isFinalizingRecording.value) return;
   isFinalizingRecording.value = true;
   isRecording.value = false;
+  stopRecordingCountdown();
   stopSpeechRecognition();
   if (maxRecordTimer) {
     clearTimeout(maxRecordTimer);
@@ -445,6 +464,7 @@ function startMediaRecording() {
           usingUniRecorder = false;
           isRecording.value = false;
           isFinalizingRecording.value = false;
+          stopRecordingCountdown();
           setBubbleText('录音没有成功，请检查麦克风权限后再试。');
         });
       }
@@ -599,6 +619,8 @@ function restart() {
   stopMediaRecording();
   if (fallbackTimer) clearTimeout(fallbackTimer);
   if (maxRecordTimer) clearTimeout(maxRecordTimer);
+  maxRecordTimer = null;
+  stopRecordingCountdown();
   if (countdownTimer) clearInterval(countdownTimer);
   countdownTimer = null;
   isPreparing.value = false;
@@ -649,6 +671,7 @@ onUnmounted(() => {
   stopMediaRecording();
   if (fallbackTimer) clearTimeout(fallbackTimer);
   if (maxRecordTimer) clearTimeout(maxRecordTimer);
+  stopRecordingCountdown();
   if (countdownTimer) clearInterval(countdownTimer);
   if (previewTimer) clearTimeout(previewTimer);
   if (previewFallbackTimer) clearTimeout(previewFallbackTimer);
