@@ -20,23 +20,23 @@
       <image class="mailbox" :src="mailboxUrl" mode="scaleToFill" />
       <view class="mailbox-copy">
         <text class="meaning">{{ currentRound.meaning }}</text>
-        <view class="word-row">
+        <view class="word-row" :style="wordRowStyle">
           <view
             v-for="(letter, index) in patternLetters"
             :key="`${currentRound.word}-${index}`"
             class="word-letter"
             :class="{ blank: index === currentRound.missingIndex && !filledLetter, filled: index === currentRound.missingIndex && filledLetter }"
           >
-            {{ index === currentRound.missingIndex ? (filledLetter || '_') : letter }}
+            {{ index === currentRound.missingIndex ? filledLetter : letter }}
           </view>
         </view>
       </view>
     </view>
 
     <view v-if="feedback === 'correct'" class="correct-feedback">
-      <image :src="rightAnswerUrl" mode="aspectFit" />
+      <image class="correct-art" :src="rightAnswerUrl" mode="aspectFit" />
       <view v-for="(star, index) in stars" :key="index" class="feedback-star" :style="star.style">
-        <image :src="starUrl" mode="aspectFit" />
+        <image class="feedback-star-art" :src="starUrl" mode="aspectFit" />
       </view>
     </view>
     <image v-else-if="feedback === 'wrong'" class="wrong-feedback" :src="wrongAnswerUrl" mode="aspectFit" />
@@ -65,11 +65,11 @@
 
     <view class="bottom-controls">
       <view class="control-button listen-button tap-image" :class="{ listening: isSpeaking }" @tap="playWord">
-        <image :src="listenUrl" mode="scaleToFill" />
+        <image class="control-art" :src="listenUrl" mode="scaleToFill" />
         <text>听发音</text>
       </view>
       <view class="control-button next-button tap-image" :class="{ disabled: isBusy }" @tap="nextWord">
-        <image :src="nextButtonUrl" mode="scaleToFill" />
+        <image class="control-art" :src="nextButtonUrl" mode="scaleToFill" />
         <text>下一个单词</text>
       </view>
     </view>
@@ -80,7 +80,7 @@
       <view class="complete-panel">
         <image class="complete-banner" :src="completeBannerUrl" mode="scaleToFill" />
         <view class="complete-stars">
-          <image v-for="star in 3" :key="star" :src="starUrl" mode="aspectFit" />
+          <image v-for="star in 3" :key="star" class="complete-star-art" :src="starUrl" mode="aspectFit" />
         </view>
         <text class="complete-copy">你已经听写完成 {{ rounds.length }} 个单词</text>
         <view class="restart-button" @tap="restart">再玩一次</view>
@@ -103,12 +103,17 @@ import rightAnswerUrl from './assets/game6_answer_right.png';
 import starUrl from './assets/game6_star.png';
 import wrongAnswerUrl from './assets/game6_answer_wrong.png';
 import bananaAudioUrl from '../game04/audio/banana.mp3';
+import correctEffectAudioUrl from '../game04/audio/correct.mp3';
+import correctVoiceAudioUrl from '../game04/audio/correct-voice.mp3';
 import mangoAudioUrl from '../game04/audio/mango.mp3';
 import orangeAudioUrl from '../game04/audio/orange.mp3';
+import openingGuideAudioUrl from '../game05/audio/opening-guide.mp3';
 import pearAudioUrl from '../game04/audio/pear.mp3';
 import plumAudioUrl from '../game04/audio/plum.mp3';
+import letterPlaceAudioUrl from '../game02/audio/select.mp3';
+import wrongEffectAudioUrl from '../game04/audio/wrong.mp3';
 
-type TileTone = 'coral' | 'yellow' | 'plain';
+type TileTone = 'coral' | 'yellow' | 'mint' | 'blue' | 'lavender' | 'plain';
 interface LetterTile {
   id: string;
   letter: string;
@@ -128,43 +133,43 @@ const rounds: Round[] = [
     meaning: '李子',
     missingIndex: 2,
     audio: plumAudioUrl,
-    tiles: makeTiles(['P', 'L', 'L', 'U', 'M', 'T', 'T', 'S', 'R', 'B'], [3])
+    tiles: makeTiles(['p', 'l', 'l', 'u', 'm', 't', 't', 's', 'r', 'b'], ['plain', 'mint', 'plain', 'coral', 'blue', 'plain', 'lavender', 'plain', 'mint', 'yellow'])
   },
   {
     word: 'banana',
     meaning: '香蕉',
     missingIndex: 3,
     audio: bananaAudioUrl,
-    tiles: makeTiles(['B', 'A', 'N', 'A', 'N', 'A', 'C', 'D', 'P', 'R'], [0, 3])
+    tiles: makeTiles(['b', 'a', 'n', 'a', 'n', 'a', 'c', 'd', 'p', 'r'], ['yellow', 'plain', 'mint', 'coral', 'blue', 'plain', 'lavender', 'plain', 'mint', 'coral'])
   },
   {
     word: 'pear',
     meaning: '梨',
     missingIndex: 1,
     audio: pearAudioUrl,
-    tiles: makeTiles(['P', 'E', 'A', 'R', 'T', 'L', 'M', 'O', 'B', 'S'], [0, 2])
+    tiles: makeTiles(['p', 'e', 'a', 'r', 't', 'l', 'm', 'o', 'b', 's'], ['blue', 'coral', 'mint', 'plain', 'lavender', 'plain', 'coral', 'plain', 'mint', 'yellow'])
   },
   {
     word: 'mango',
     meaning: '芒果',
     missingIndex: 2,
     audio: mangoAudioUrl,
-    tiles: makeTiles(['M', 'A', 'N', 'G', 'O', 'P', 'B', 'T', 'R', 'L'], [0, 3])
+    tiles: makeTiles(['m', 'a', 'n', 'g', 'o', 'p', 'b', 't', 'r', 'l'], ['coral', 'mint', 'plain', 'blue', 'yellow', 'plain', 'lavender', 'plain', 'mint', 'coral'])
   },
   {
     word: 'orange',
     meaning: '橙子',
     missingIndex: 3,
     audio: orangeAudioUrl,
-    tiles: makeTiles(['O', 'R', 'A', 'N', 'G', 'E', 'P', 'B', 'T', 'M'], [0, 3])
+    tiles: makeTiles(['o', 'r', 'a', 'n', 'g', 'e', 'p', 'b', 't', 'm'], ['coral', 'plain', 'mint', 'blue', 'yellow', 'coral', 'plain', 'lavender', 'mint', 'plain'])
   }
 ];
 
-function makeTiles(letters: string[], coralIndexes: number[]): LetterTile[] {
+function makeTiles(letters: string[], tones: TileTone[]): LetterTile[] {
   return letters.map((letter, index) => ({
     id: `${letter}-${index}`,
     letter,
-    tone: (coralIndexes.includes(index) ? 'coral' : index === letters.length - 1 ? 'yellow' : 'plain') as TileTone
+    tone: tones[index] || 'plain'
   }));
 }
 
@@ -175,12 +180,22 @@ const usedTileId = ref('');
 const draggingTileId = ref('');
 const feedback = ref<'correct' | 'wrong' | null>(null);
 const isSpeaking = ref(false);
+const isGuiding = ref(false);
 const isComplete = ref(false);
 
 const currentRound = computed(() => rounds[currentIndex.value]);
-const patternLetters = computed(() => currentRound.value.word.toUpperCase().split(''));
+const patternLetters = computed(() => currentRound.value.word.split(''));
+const wordRowStyle = computed(() => {
+  const length = currentRound.value.word.length;
+  const size = Math.min(9, 42 / length);
+  const gap = Math.max(0.45, Math.min(1.1, 7 / length));
+  return {
+    '--word-size': `${size}vw`,
+    '--word-gap': `${gap}vw`
+  };
+});
 const progressPercent = computed(() => ((currentIndex.value + 1) / rounds.length) * 100);
-const isBusy = computed(() => Boolean(feedback.value) || isComplete.value || Boolean(filledLetter.value));
+const isBusy = computed(() => Boolean(feedback.value) || isGuiding.value || isComplete.value || Boolean(filledLetter.value));
 const stars = [
   { style: 'left: 18%; top: 22%; --delay: 0ms' },
   { style: 'left: 42%; top: 2%; --delay: 100ms' },
@@ -190,9 +205,16 @@ const stars = [
 ];
 
 let wordAudio: UniApp.InnerAudioContext | null = null;
+let completionWordAudio: UniApp.InnerAudioContext | null = null;
+let openingGuideAudio: UniApp.InnerAudioContext | null = null;
+let letterPlaceAudio: UniApp.InnerAudioContext | null = null;
+let correctEffectAudio: UniApp.InnerAudioContext | null = null;
+let correctVoiceAudio: UniApp.InnerAudioContext | null = null;
+let wrongEffectAudio: UniApp.InnerAudioContext | null = null;
 let speechTimer: ReturnType<typeof setTimeout> | null = null;
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 let transitionTimer: ReturnType<typeof setTimeout> | null = null;
+let openingGuideTimer: ReturnType<typeof setTimeout> | null = null;
 let dragMoved = false;
 const dragStart = ref({ x: 0, y: 0 });
 const dragOffset = ref({ x: 0, y: 0 });
@@ -250,27 +272,32 @@ function dropInWordArea() {
 
 function placeLetter(tile: LetterTile) {
   if (isBusy.value || usedTileId.value) return;
+  playLetterPlaceEffect();
   if (tile.letter.toLowerCase() === currentRound.value.word[currentRound.value.missingIndex]) {
     filledLetter.value = tile.letter;
     usedTileId.value = tile.id;
     feedback.value = 'correct';
     updateProgress((currentIndex.value + 1) * 20, currentIndex.value === rounds.length - 1);
+    playCorrectEffect();
+    playCorrectSequence();
     vibrate('light');
-    feedbackTimer = setTimeout(() => advanceRound(), 1050);
+    feedbackTimer = setTimeout(() => advanceRound(), 3600);
     return;
   }
 
   feedback.value = 'wrong';
-  vibrate('light');
+  playWrongEffect();
+  speakWithSystemVoice('再试一次', 'zh-CN', 0.9);
   if (feedbackTimer) clearTimeout(feedbackTimer);
   feedbackTimer = setTimeout(() => {
     feedback.value = null;
     feedbackTimer = null;
+    playWord();
   }, 850);
 }
 
 function playWord() {
-  if (isComplete.value) return;
+  if (isComplete.value || isGuiding.value) return;
   isSpeaking.value = true;
   if (speechTimer) clearTimeout(speechTimer);
   speechTimer = setTimeout(() => {
@@ -291,19 +318,108 @@ function playWord() {
   wordAudio.play();
 }
 
-function speakWithSystemVoice(word: string) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+function playLetterPlaceEffect() {
+  if (!letterPlaceAudio) {
+    letterPlaceAudio = uni.createInnerAudioContext();
+    letterPlaceAudio.obeyMuteSwitch = false;
+  }
+  letterPlaceAudio.stop();
+  letterPlaceAudio.src = letterPlaceAudioUrl;
+  letterPlaceAudio.play();
+}
+
+function playCorrectEffect() {
+  if (!correctEffectAudio) {
+    correctEffectAudio = uni.createInnerAudioContext();
+    correctEffectAudio.obeyMuteSwitch = false;
+  }
+  correctEffectAudio.stop();
+  correctEffectAudio.src = correctEffectAudioUrl;
+  correctEffectAudio.play();
+}
+
+function playWrongEffect() {
+  if (!wrongEffectAudio) {
+    wrongEffectAudio = uni.createInnerAudioContext();
+    wrongEffectAudio.obeyMuteSwitch = false;
+  }
+  wrongEffectAudio.stop();
+  wrongEffectAudio.src = wrongEffectAudioUrl;
+  wrongEffectAudio.play();
+}
+
+function playCorrectSequence() {
+  isSpeaking.value = true;
+  if (!completionWordAudio) {
+    completionWordAudio = uni.createInnerAudioContext();
+    completionWordAudio.obeyMuteSwitch = false;
+    completionWordAudio.onEnded(playCorrectVoice);
+    completionWordAudio.onError(playCorrectVoice);
+  }
+  completionWordAudio.stop();
+  completionWordAudio.src = currentRound.value.audio;
+  completionWordAudio.play();
+}
+
+function playCorrectVoice() {
+  if (!correctVoiceAudio) {
+    correctVoiceAudio = uni.createInnerAudioContext();
+    correctVoiceAudio.obeyMuteSwitch = false;
+    correctVoiceAudio.onEnded(() => { isSpeaking.value = false; });
+    correctVoiceAudio.onError(() => speakWithSystemVoice('答对了', 'zh-CN', 0.9));
+  }
+  correctVoiceAudio.stop();
+  correctVoiceAudio.src = correctVoiceAudioUrl;
+  correctVoiceAudio.play();
+}
+
+function speakWithSystemVoice(text: string, lang = 'en-US', rate = 0.72) {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    isSpeaking.value = false;
+    return;
+  }
   window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(word);
-  utterance.lang = 'en-US';
-  utterance.rate = 0.75;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = lang;
+  utterance.rate = rate;
   utterance.onend = () => { isSpeaking.value = false; };
+  utterance.onerror = () => { isSpeaking.value = false; };
   window.speechSynthesis.speak(utterance);
+}
+
+function finishOpeningGuide() {
+  if (openingGuideTimer) {
+    clearTimeout(openingGuideTimer);
+    openingGuideTimer = null;
+  }
+  if (!isGuiding.value) return;
+  isGuiding.value = false;
+  playWord();
+}
+
+function playOpeningGuide() {
+  if (isComplete.value) return;
+  isGuiding.value = true;
+  isSpeaking.value = true;
+  wordAudio?.stop();
+  if (!openingGuideAudio) {
+    openingGuideAudio = uni.createInnerAudioContext();
+    openingGuideAudio.obeyMuteSwitch = false;
+    openingGuideAudio.onEnded(finishOpeningGuide);
+    openingGuideAudio.onError(finishOpeningGuide);
+  }
+  openingGuideAudio.stop();
+  openingGuideAudio.src = openingGuideAudioUrl;
+  openingGuideAudio.play();
+  openingGuideTimer = setTimeout(finishOpeningGuide, 4300);
 }
 
 function advanceRound() {
   feedback.value = null;
   feedbackTimer = null;
+  completionWordAudio?.stop();
+  correctVoiceAudio?.stop();
+  isSpeaking.value = false;
   if (currentIndex.value >= rounds.length - 1) {
     isComplete.value = true;
     return;
@@ -322,13 +438,18 @@ function nextWord() {
 function restart() {
   if (feedbackTimer) clearTimeout(feedbackTimer);
   if (transitionTimer) clearTimeout(transitionTimer);
+  if (openingGuideTimer) clearTimeout(openingGuideTimer);
+  openingGuideAudio?.stop();
+  completionWordAudio?.stop();
+  correctVoiceAudio?.stop();
   resetProgress();
   currentIndex.value = 0;
   filledLetter.value = '';
   usedTileId.value = '';
   feedback.value = null;
+  isGuiding.value = false;
   isComplete.value = false;
-  setTimeout(playWord, 220);
+  openingGuideTimer = setTimeout(playOpeningGuide, 220);
 }
 
 function goBack() {
@@ -343,14 +464,27 @@ function vibrate(type: 'light' | 'medium') {
 }
 
 onMounted(() => {
-  setTimeout(playWord, 450);
+  openingGuideTimer = setTimeout(playOpeningGuide, 450);
 });
 
 onUnmounted(() => {
   if (speechTimer) clearTimeout(speechTimer);
   if (feedbackTimer) clearTimeout(feedbackTimer);
   if (transitionTimer) clearTimeout(transitionTimer);
+  if (openingGuideTimer) clearTimeout(openingGuideTimer);
+  openingGuideAudio?.destroy();
+  letterPlaceAudio?.destroy();
+  correctEffectAudio?.destroy();
+  correctVoiceAudio?.destroy();
+  wrongEffectAudio?.destroy();
+  completionWordAudio?.destroy();
   wordAudio?.destroy();
+  openingGuideAudio = null;
+  letterPlaceAudio = null;
+  correctEffectAudio = null;
+  correctVoiceAudio = null;
+  wrongEffectAudio = null;
+  completionWordAudio = null;
   wordAudio = null;
   if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
 });
@@ -467,7 +601,8 @@ onUnmounted(() => {
 .meaning {
   display: block;
   color: #5c1a1d;
-  font-size: clamp(16px, 4.5vw, 26px);
+  font-size: clamp(22px, 5.8vw, 36px);
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -475,14 +610,18 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(3px, 1.1vw, 9px);
+  width: 100%;
+  max-width: 100%;
+  gap: var(--word-gap, 0.8vw);
   margin-top: 2%;
+  overflow: hidden;
 }
 
 .word-letter {
-  min-width: 0.55em;
+  flex: 0 1 auto;
+  min-width: 0.45em;
   color: #5c0f18;
-  font-size: clamp(34px, 9vw, 60px);
+  font-size: clamp(20px, var(--word-size, 8vw), 60px);
   font-weight: 900;
   line-height: 1;
   text-align: center;
@@ -490,7 +629,7 @@ onUnmounted(() => {
 }
 
 .word-letter.blank {
-  min-width: 0.7em;
+  min-width: 0.6em;
   border-bottom: 3px solid #5c0f18;
   color: transparent;
 }
@@ -511,9 +650,11 @@ onUnmounted(() => {
   transform: translate(-50%, -50%);
 }
 
-.correct-feedback > image {
-  width: 100%;
-  height: 100%;
+.correct-art {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
   animation: success-pop 0.78s ease both;
 }
 
@@ -525,7 +666,12 @@ onUnmounted(() => {
   animation-delay: var(--delay);
 }
 
-.feedback-star image { width: 100%; height: 100%; }
+.feedback-star-art {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+}
 
 .wrong-feedback {
   position: absolute;
@@ -553,14 +699,14 @@ onUnmounted(() => {
 
 .tile-grid {
   position: absolute;
-  top: 13%;
-  left: 10%;
+  top: 16%;
+  left: 11.5%;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   grid-template-rows: repeat(2, 1fr);
-  gap: 7% 5%;
-  width: 80%;
-  height: 72%;
+  gap: 4.5% 4%;
+  width: 77%;
+  height: 63%;
 }
 
 .letter-tile {
@@ -598,6 +744,24 @@ onUnmounted(() => {
 }
 
 .letter-tile.tile-yellow text { color: #bc6b14; }
+.letter-tile.tile-mint {
+  border-color: #7ec9a5;
+  background: linear-gradient(#e5fff0, #a9e8c5);
+  box-shadow: 0 4rpx 0 #70b894, inset 0 2rpx 4rpx rgba(255, 255, 255, 0.72);
+}
+.letter-tile.tile-mint text { color: #32845a; }
+.letter-tile.tile-blue {
+  border-color: #7aa8d9;
+  background: linear-gradient(#e6f3ff, #acd1f6);
+  box-shadow: 0 4rpx 0 #7199c5, inset 0 2rpx 4rpx rgba(255, 255, 255, 0.72);
+}
+.letter-tile.tile-blue text { color: #3f6e9f; }
+.letter-tile.tile-lavender {
+  border-color: #b18ed0;
+  background: linear-gradient(#f3e9ff, #d2b5ed);
+  box-shadow: 0 4rpx 0 #a47bc3, inset 0 2rpx 4rpx rgba(255, 255, 255, 0.72);
+}
+.letter-tile.tile-lavender text { color: #76519c; }
 .letter-tile.dragging { z-index: 3; transform: translateY(-8%) scale(1.08); box-shadow: 0 10rpx 16rpx rgba(110, 72, 32, 0.28); }
 .letter-tile.used { opacity: 0.36; transform: scale(0.94); }
 
@@ -618,7 +782,13 @@ onUnmounted(() => {
   min-height: 48px;
 }
 
-.control-button image { width: 100%; height: 100%; }
+.control-art {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .control-button text {
   position: absolute;
   top: 50%;
@@ -657,7 +827,7 @@ onUnmounted(() => {
 
 .complete-banner { width: 100%; height: clamp(72px, 12vw, 110px); }
 .complete-stars { display: flex; justify-content: center; gap: 6%; margin: 6% 0 3%; }
-.complete-stars image { width: 17%; height: clamp(32px, 8vw, 58px); }
+.complete-star-art { width: 17%; height: clamp(32px, 8vw, 58px); }
 .complete-copy { display: block; color: #fff; font-size: clamp(18px, 5vw, 30px); font-weight: 900; text-shadow: 0 2rpx 0 #bf641d; }
 .restart-button { width: 52%; margin: 7% auto 0; padding: 3% 0; border: 3px solid #fff; border-radius: 999rpx; background: #ffbd19; color: #fff; font-size: clamp(18px, 5vw, 30px); font-weight: 900; box-shadow: 0 5rpx 0 #cf781c; }
 .confetti { position: absolute; color: #ff3b76; font-size: 34px; animation: confetti-drop 1.2s ease infinite; }
