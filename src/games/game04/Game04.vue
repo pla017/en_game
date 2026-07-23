@@ -559,11 +559,6 @@ onUnmounted(() => {
   height: 100%;
 }
 
-.drum-left-top .drum-image { transform: scale(1.12); transform-origin: 20% center; }
-.drum-center-top .drum-image { transform: scale(0.96); }
-.drum-left-bottom .drum-image { transform: scaleX(1.2); transform-origin: left center; }
-.drum-center-bottom .drum-image { transform: scale(1.26); transform-origin: left center; }
-
 .word-label {
   position: absolute;
   z-index: 4;
@@ -583,35 +578,33 @@ onUnmounted(() => {
 }
 
 .word-left-top {
-  top: -14rpx;
-  left: 92%;
+  top: -46rpx;
+  left: 50%;
   color: #f23879;
-  font-size: 46rpx;
-  transform: translateX(-50%) rotate(14deg);
+  transform: translateX(-50%);
 }
 
 .word-center-top {
-  top: -42rpx;
-  left: 45%;
+  top: -48rpx;
+  left: 50%;
   color: #f3743f;
-  transform: translateX(-50%) rotate(-4deg);
+  transform: translateX(-50%);
 }
 
 .word-right-top {
-  top: 28rpx;
-  left: 18%;
+  top: -46rpx;
+  left: 50%;
   color: #168ae3;
   text-transform: capitalize;
-  transform: translateX(-50%) rotate(-25deg);
+  transform: translateX(-50%);
 }
 
 .word-left-bottom {
-  top: 10rpx;
-  left: 98%;
+  top: -48rpx;
+  left: 50%;
   color: #20c895;
-  font-size: 46rpx;
   text-transform: capitalize;
-  transform: translateX(-50%) rotate(24deg);
+  transform: translateX(-50%);
 }
 
 .word-center-bottom {
