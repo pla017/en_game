@@ -1,13 +1,29 @@
 <template>
-  <view class="listen-game mini-game-screen">
+  <view
+    class="listen-game mini-game-screen"
+    @touchstart="resumeBackgroundMusic"
+    @mousedown="resumeBackgroundMusic"
+  >
     <image class="scene-bg" :src="backgroundUrl" mode="scaleToFill" />
 
     <image class="back-button tap-image" :src="returnUrl" mode="aspectFit" @tap="goBack" />
+    <view
+      class="music-button tap-image"
+      :class="{ playing: isMusicPlaying, muted: !isMusicEnabled }"
+      :aria-label="isMusicEnabled ? '关闭背景音乐' : '开启背景音乐'"
+      @tap.stop="toggleBackgroundMusic"
+    >
+      <view class="music-spinner" />
+      <text class="music-note">♪</text>
+      <view v-if="!isMusicEnabled" class="music-muted-line" />
+    </view>
     <text class="game-title">听音填词</text>
 
     <view class="progress-wrap" aria-label="游戏进度">
       <view class="progress-track">
-        <view class="progress-fill" :style="{ width: `${progressPercent}%` }" />
+        <view class="progress-fill" :style="{ width: `${progressPercent}%` }">
+          <view class="progress-highlight" />
+        </view>
       </view>
       <text class="progress-label">进度 {{ currentIndex + 1 }}/{{ rounds.length }}</text>
     </view>
@@ -25,9 +41,12 @@
             v-for="(letter, index) in patternLetters"
             :key="`${currentRound.word}-${index}`"
             class="word-letter"
-            :class="{ blank: index === currentRound.missingIndex && !filledLetter, filled: index === currentRound.missingIndex && filledLetter }"
+            :class="{
+              blank: currentRound.missingIndices.includes(index) && !filledLetters[index],
+              filled: currentRound.missingIndices.includes(index) && filledLetters[index]
+            }"
           >
-            {{ index === currentRound.missingIndex ? filledLetter : letter }}
+            {{ currentRound.missingIndices.includes(index) ? filledLetters[index] : letter }}
           </view>
         </view>
       </view>
@@ -50,7 +69,7 @@
           class="letter-tile"
           :class="[
             `tile-${tile.tone}`,
-            { used: usedTileId === tile.id, dragging: draggingTileId === tile.id }
+            { used: usedTileIds.includes(tile.id), dragging: draggingTileId === tile.id }
           ]"
           :style="tileDragStyle(tile)"
           @touchstart.stop="startDrag($event, tile)"
@@ -68,9 +87,9 @@
         <image class="control-art" :src="listenUrl" mode="scaleToFill" />
         <text>听发音</text>
       </view>
-      <view class="control-button next-button tap-image" :class="{ disabled: isBusy }" @tap="nextWord">
+      <view class="control-button next-button tap-image" :class="{ disabled: isBusy || !isRoundSolved }" @tap="nextWord">
         <image class="control-art" :src="nextButtonUrl" mode="scaleToFill" />
-        <text>下一个单词</text>
+        <text>下个单词</text>
       </view>
     </view>
 
@@ -103,6 +122,7 @@ import rightAnswerUrl from './assets/game6_answer_right.png';
 import starUrl from './assets/game6_star.png';
 import wrongAnswerUrl from './assets/game6_answer_wrong.png';
 import bananaAudioUrl from '../game04/audio/banana.mp3';
+import backgroundMusicUrl from '../game05/audio/background-music.mp3';
 import correctEffectAudioUrl from '../game04/audio/correct.mp3';
 import correctVoiceAudioUrl from '../game04/audio/correct-voice.mp3';
 import mangoAudioUrl from '../game04/audio/mango.mp3';
@@ -122,7 +142,7 @@ interface LetterTile {
 interface Round {
   word: string;
   meaning: string;
-  missingIndex: number;
+  missingIndices: number[];
   tiles: LetterTile[];
   audio: string;
 }
@@ -131,35 +151,35 @@ const rounds: Round[] = [
   {
     word: 'plum',
     meaning: '李子',
-    missingIndex: 2,
+    missingIndices: [2],
     audio: plumAudioUrl,
     tiles: makeTiles(['p', 'l', 'l', 'u', 'm', 't', 't', 's', 'r', 'b'], ['plain', 'mint', 'plain', 'coral', 'blue', 'plain', 'lavender', 'plain', 'mint', 'yellow'])
   },
   {
     word: 'banana',
     meaning: '香蕉',
-    missingIndex: 3,
+    missingIndices: [1, 3, 5],
     audio: bananaAudioUrl,
     tiles: makeTiles(['b', 'a', 'n', 'a', 'n', 'a', 'c', 'd', 'p', 'r'], ['yellow', 'plain', 'mint', 'coral', 'blue', 'plain', 'lavender', 'plain', 'mint', 'coral'])
   },
   {
     word: 'pear',
     meaning: '梨',
-    missingIndex: 1,
+    missingIndices: [1, 3],
     audio: pearAudioUrl,
     tiles: makeTiles(['p', 'e', 'a', 'r', 't', 'l', 'm', 'o', 'b', 's'], ['blue', 'coral', 'mint', 'plain', 'lavender', 'plain', 'coral', 'plain', 'mint', 'yellow'])
   },
   {
     word: 'mango',
     meaning: '芒果',
-    missingIndex: 2,
+    missingIndices: [1, 3],
     audio: mangoAudioUrl,
     tiles: makeTiles(['m', 'a', 'n', 'g', 'o', 'p', 'b', 't', 'r', 'l'], ['coral', 'mint', 'plain', 'blue', 'yellow', 'plain', 'lavender', 'plain', 'mint', 'coral'])
   },
   {
     word: 'orange',
     meaning: '橙子',
-    missingIndex: 3,
+    missingIndices: [1, 3, 5],
     audio: orangeAudioUrl,
     tiles: makeTiles(['o', 'r', 'a', 'n', 'g', 'e', 'p', 'b', 't', 'm'], ['coral', 'plain', 'mint', 'blue', 'yellow', 'coral', 'plain', 'lavender', 'mint', 'plain'])
   }
@@ -175,13 +195,15 @@ function makeTiles(letters: string[], tones: TileTone[]): LetterTile[] {
 
 const { updateProgress, resetProgress } = useGameProgress('game-06');
 const currentIndex = ref(0);
-const filledLetter = ref('');
-const usedTileId = ref('');
+const filledLetters = ref<string[]>([]);
+const usedTileIds = ref<string[]>([]);
 const draggingTileId = ref('');
 const feedback = ref<'correct' | 'wrong' | null>(null);
 const isSpeaking = ref(false);
 const isGuiding = ref(false);
 const isComplete = ref(false);
+const isMusicEnabled = ref(true);
+const isMusicPlaying = ref(false);
 
 const currentRound = computed(() => rounds[currentIndex.value]);
 const patternLetters = computed(() => currentRound.value.word.split(''));
@@ -195,7 +217,9 @@ const wordRowStyle = computed(() => {
   };
 });
 const progressPercent = computed(() => ((currentIndex.value + 1) / rounds.length) * 100);
-const isBusy = computed(() => Boolean(feedback.value) || isGuiding.value || isComplete.value || Boolean(filledLetter.value));
+const isRoundSolved = computed(() => currentRound.value.missingIndices.every((index) => Boolean(filledLetters.value[index])));
+const nextMissingIndex = computed(() => currentRound.value.missingIndices.find((index) => !filledLetters.value[index]));
+const isBusy = computed(() => Boolean(feedback.value) || isGuiding.value || isComplete.value);
 const stars = [
   { style: 'left: 18%; top: 22%; --delay: 0ms' },
   { style: 'left: 42%; top: 2%; --delay: 100ms' },
@@ -211,11 +235,13 @@ let letterPlaceAudio: UniApp.InnerAudioContext | null = null;
 let correctEffectAudio: UniApp.InnerAudioContext | null = null;
 let correctVoiceAudio: UniApp.InnerAudioContext | null = null;
 let wrongEffectAudio: UniApp.InnerAudioContext | null = null;
+let backgroundMusicAudio: UniApp.InnerAudioContext | null = null;
 let speechTimer: ReturnType<typeof setTimeout> | null = null;
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 let transitionTimer: ReturnType<typeof setTimeout> | null = null;
 let openingGuideTimer: ReturnType<typeof setTimeout> | null = null;
 let dragMoved = false;
+let openingGuidePending = false;
 const dragStart = ref({ x: 0, y: 0 });
 const dragOffset = ref({ x: 0, y: 0 });
 
@@ -224,7 +250,8 @@ function getTouch(event: any) {
 }
 
 function startDrag(event: any, tile: LetterTile) {
-  if (isBusy.value || usedTileId.value) return;
+  resumeBackgroundMusic();
+  if (isBusy.value || usedTileIds.value.includes(tile.id) || isRoundSolved.value) return;
   const touch = getTouch(event);
   if (!touch) return;
   draggingTileId.value = tile.id;
@@ -271,23 +298,31 @@ function dropInWordArea() {
 }
 
 function placeLetter(tile: LetterTile) {
-  if (isBusy.value || usedTileId.value) return;
+  resumeBackgroundMusic();
+  if (isBusy.value || usedTileIds.value.includes(tile.id) || isRoundSolved.value) return;
   playLetterPlaceEffect();
-  if (tile.letter.toLowerCase() === currentRound.value.word[currentRound.value.missingIndex]) {
-    filledLetter.value = tile.letter;
-    usedTileId.value = tile.id;
-    feedback.value = 'correct';
-    updateProgress((currentIndex.value + 1) * 20, currentIndex.value === rounds.length - 1);
-    playCorrectEffect();
-    playCorrectSequence();
-    vibrate('light');
-    feedbackTimer = setTimeout(() => advanceRound(), 3600);
+  const missingIndex = nextMissingIndex.value;
+  if (missingIndex == null) return;
+
+  if (tile.letter.toLowerCase() === currentRound.value.word[missingIndex]) {
+    const nextFilledLetters = [...filledLetters.value];
+    nextFilledLetters[missingIndex] = tile.letter;
+    filledLetters.value = nextFilledLetters;
+    usedTileIds.value = [...usedTileIds.value, tile.id];
+    if (isRoundSolved.value) {
+      feedback.value = 'correct';
+      updateProgress((currentIndex.value + 1) * 20, currentIndex.value === rounds.length - 1);
+      playCorrectEffect();
+      playCorrectSequence();
+      vibrate('light');
+      feedbackTimer = setTimeout(() => advanceRound(), 3600);
+    }
     return;
   }
 
   feedback.value = 'wrong';
   playWrongEffect();
-  speakWithSystemVoice('再试一次', 'zh-CN', 0.9);
+  speakWithSystemVoice('不对，请再试一次', 'zh-CN', 0.9);
   if (feedbackTimer) clearTimeout(feedbackTimer);
   feedbackTimer = setTimeout(() => {
     feedback.value = null;
@@ -316,6 +351,46 @@ function playWord() {
   wordAudio.stop();
   wordAudio.src = currentRound.value.audio;
   wordAudio.play();
+}
+
+function ensureBackgroundMusic() {
+  if (backgroundMusicAudio) return backgroundMusicAudio;
+  backgroundMusicAudio = uni.createInnerAudioContext();
+  backgroundMusicAudio.obeyMuteSwitch = false;
+  backgroundMusicAudio.loop = true;
+  backgroundMusicAudio.volume = 0.16;
+  backgroundMusicAudio.src = backgroundMusicUrl;
+  backgroundMusicAudio.onPlay(() => { isMusicPlaying.value = true; });
+  backgroundMusicAudio.onPause(() => { isMusicPlaying.value = false; });
+  backgroundMusicAudio.onStop(() => { isMusicPlaying.value = false; });
+  backgroundMusicAudio.onError(() => { isMusicPlaying.value = false; });
+  return backgroundMusicAudio;
+}
+
+function canStartAudio() {
+  if (typeof navigator === 'undefined') return true;
+  const navigatorWithActivation = navigator as Navigator & { userActivation?: { hasBeenActive: boolean } };
+  return navigatorWithActivation.userActivation?.hasBeenActive ?? true;
+}
+
+function startBackgroundMusic() {
+  if (!isMusicEnabled.value || !canStartAudio()) return;
+  ensureBackgroundMusic().play();
+}
+
+function resumeBackgroundMusic() {
+  if (isMusicEnabled.value) startBackgroundMusic();
+  if (openingGuidePending) playOpeningGuide();
+}
+
+function toggleBackgroundMusic() {
+  isMusicEnabled.value = !isMusicEnabled.value;
+  if (isMusicEnabled.value) {
+    startBackgroundMusic();
+    return;
+  }
+  isMusicPlaying.value = false;
+  backgroundMusicAudio?.pause();
 }
 
 function playLetterPlaceEffect() {
@@ -398,6 +473,7 @@ function finishOpeningGuide() {
 }
 
 function playOpeningGuide() {
+  openingGuidePending = false;
   if (isComplete.value) return;
   isGuiding.value = true;
   isSpeaking.value = true;
@@ -414,6 +490,20 @@ function playOpeningGuide() {
   openingGuideTimer = setTimeout(finishOpeningGuide, 4300);
 }
 
+function playOpeningGuideAfterDelay(delay: number) {
+  if (openingGuideTimer) clearTimeout(openingGuideTimer);
+  openingGuidePending = false;
+  isGuiding.value = true;
+  openingGuideTimer = setTimeout(() => {
+    openingGuideTimer = null;
+    if (!canStartAudio()) {
+      openingGuidePending = true;
+      return;
+    }
+    playOpeningGuide();
+  }, delay);
+}
+
 function advanceRound() {
   feedback.value = null;
   feedbackTimer = null;
@@ -425,13 +515,13 @@ function advanceRound() {
     return;
   }
   currentIndex.value += 1;
-  filledLetter.value = '';
-  usedTileId.value = '';
+  filledLetters.value = [];
+  usedTileIds.value = [];
   transitionTimer = setTimeout(playWord, 180);
 }
 
 function nextWord() {
-  if (isBusy.value) return;
+  if (isBusy.value || !isRoundSolved.value) return;
   advanceRound();
 }
 
@@ -444,12 +534,12 @@ function restart() {
   correctVoiceAudio?.stop();
   resetProgress();
   currentIndex.value = 0;
-  filledLetter.value = '';
-  usedTileId.value = '';
+  filledLetters.value = [];
+  usedTileIds.value = [];
   feedback.value = null;
   isGuiding.value = false;
   isComplete.value = false;
-  openingGuideTimer = setTimeout(playOpeningGuide, 220);
+  playOpeningGuideAfterDelay(220);
 }
 
 function goBack() {
@@ -464,7 +554,8 @@ function vibrate(type: 'light' | 'medium') {
 }
 
 onMounted(() => {
-  openingGuideTimer = setTimeout(playOpeningGuide, 450);
+  startBackgroundMusic();
+  playOpeningGuideAfterDelay(450);
 });
 
 onUnmounted(() => {
@@ -479,6 +570,7 @@ onUnmounted(() => {
   wrongEffectAudio?.destroy();
   completionWordAudio?.destroy();
   wordAudio?.destroy();
+  backgroundMusicAudio?.destroy();
   openingGuideAudio = null;
   letterPlaceAudio = null;
   correctEffectAudio = null;
@@ -486,6 +578,7 @@ onUnmounted(() => {
   wrongEffectAudio = null;
   completionWordAudio = null;
   wordAudio = null;
+  backgroundMusicAudio = null;
   if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
 });
 </script>
@@ -516,6 +609,35 @@ onUnmounted(() => {
   z-index: 3;
 }
 
+.music-button {
+  position: absolute;
+  top: 3.4%;
+  right: 5%;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 10.5%;
+  aspect-ratio: 1;
+  border: 2rpx solid rgba(255, 255, 255, 0.78);
+  border-radius: 50%;
+  background: #f2b532;
+  box-shadow: 0 4rpx 0 #d98523, 0 6rpx 12rpx rgba(83, 115, 38, 0.22);
+}
+
+.music-spinner {
+  position: absolute;
+  inset: -0.35vh;
+  border: 0.35vh solid #fff7c8;
+  border-top-color: #fff;
+  border-radius: 50%;
+}
+
+.music-button.playing .music-spinner { animation: music-spin 2.4s linear infinite; }
+.music-note { color: #fff; font-size: 3.1vh; font-weight: 800; line-height: 1; text-shadow: 0 0.16vh 0 rgba(146, 78, 14, 0.3); }
+.music-muted-line { position: absolute; width: 72%; height: 0.32vh; border-radius: 1vh; background: #fff; transform: rotate(-45deg); box-shadow: 0 0.12vh 0 rgba(146, 78, 14, 0.25); }
+.music-button.muted { background: #9a9da0; box-shadow: 0 4rpx 0 #74777a, 0 6rpx 12rpx rgba(70, 70, 70, 0.18); }
+
 .game-title {
   position: absolute;
   top: 2.1%;
@@ -531,43 +653,64 @@ onUnmounted(() => {
 
 .progress-wrap {
   position: absolute;
-  top: 15.5%;
+  top: 15.3%;
   left: 50%;
-  width: 64%;
-  height: 10%;
+  width: 66%;
+  height: 8.8%;
+  z-index: 2;
   transform: translateX(-50%);
 }
 
 .progress-track {
   position: absolute;
-  top: 18%;
+  top: 12%;
   left: 5%;
   width: 90%;
-  height: 22%;
+  height: 28%;
   overflow: hidden;
   border-radius: 999rpx;
-  background: rgba(102, 24, 53, 0.74);
-  box-shadow: inset 0 2rpx 4rpx rgba(86, 20, 49, 0.4);
+  border: 3rpx solid #ee8195;
+  background: linear-gradient(180deg, #73152e 0%, #9b2943 52%, #6d1329 100%);
+  box-shadow:
+    0 2rpx 0 rgba(255, 203, 207, 0.92),
+    inset 0 3rpx 7rpx rgba(70, 8, 29, 0.62),
+    0 3rpx 7rpx rgba(130, 25, 50, 0.22);
 }
 
 .progress-fill {
+  position: relative;
   height: 100%;
+  min-width: 0;
+  overflow: hidden;
   border-radius: inherit;
-  background: linear-gradient(90deg, #fbd32c, #ff9e35);
-  box-shadow: 0 0 12rpx rgba(255, 226, 73, 0.92);
+  background: linear-gradient(90deg, #ffc72b 0%, #ffde38 52%, #ffb62a 100%);
+  box-shadow:
+    inset 0 -3rpx 4rpx rgba(239, 137, 26, 0.45),
+    2rpx 0 8rpx rgba(255, 196, 31, 0.72);
   transition: width 0.45s ease;
+}
+
+.progress-highlight {
+  position: absolute;
+  top: 13%;
+  right: 12%;
+  left: 12%;
+  height: 27%;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 205, 0.76);
 }
 
 .progress-label {
   position: absolute;
-  top: 52%;
+  top: 55%;
   left: 0;
   width: 100%;
-  color: #6d2719;
-  font-size: clamp(20px, 5vw, 32px);
+  color: #6f241f;
+  font-size: clamp(14px, 3.7vw, 23px);
   font-weight: 900;
   line-height: 1;
   text-align: center;
+  text-shadow: 0 1rpx 0 rgba(255, 255, 255, 0.72);
 }
 
 .mailbox-stage {
@@ -686,10 +829,10 @@ onUnmounted(() => {
 
 .keyboard-stage {
   position: absolute;
-  top: 68.8%;
-  left: 15%;
-  width: 70%;
-  height: 21.5%;
+  top: 67.5%;
+  left: 10%;
+  width: 80%;
+  height: 23%;
 }
 
 .keyboard {
@@ -839,5 +982,6 @@ onUnmounted(() => {
 @keyframes wrong-pop { 0%, 100% { transform: translate(-50%, -50%); } 45% { transform: translate(-50%, -50%) scale(1.06); } }
 @keyframes letter-land { 0% { transform: translateY(-24%) scale(0.7); opacity: 0.2; } 75% { transform: translateY(6%) scale(1.1); } 100% { transform: translateY(0) scale(1); opacity: 1; } }
 @keyframes listen-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); filter: brightness(1.1); } }
+@keyframes music-spin { to { transform: rotate(360deg); } }
 @keyframes confetti-drop { 0%, 100% { transform: translateY(-8px) rotate(0); } 50% { transform: translateY(14px) rotate(35deg); } }
 </style>

@@ -7,7 +7,7 @@ export const gameList: GameMeta[] = [
   { id: 'game-04', title: '击鼓识词', description: '听单词发音，点击对应的鼓面。', difficulty: 'normal', status: 'ready' },
   { id: 'game-05', title: '单词拼图', description: '拖动字母拼出完整的英文单词。', difficulty: 'easy', status: 'ready' },
   { id: 'game-06', title: '听音填词', description: '听发音并拖拽字母补全单词。', difficulty: 'normal', status: 'ready' },
-  { id: 'game-07', title: '句子排序', description: '调整词块顺序组成句子。', difficulty: 'normal', status: 'ready' },
+  { id: 'game-07', title: '打地鼠', description: '智能复习：根据中英文提示，快速击中正确的单词地鼠。', difficulty: 'normal', status: 'ready' },
   { id: 'game-08', title: '快速翻译', description: '限时选择中文对应英文。', difficulty: 'normal', status: 'ready' },
   { id: 'game-09', title: '单词接龙', description: '用上一个尾字母接下一个词。', difficulty: 'hard', status: 'ready' },
   { id: 'game-10', title: '语法侦探', description: '找出句子中的语法问题。', difficulty: 'hard', status: 'ready' },

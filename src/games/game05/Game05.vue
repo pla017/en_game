@@ -1,12 +1,28 @@
 <template>
   <view class="game05-page">
-    <view class="game-stage" @touchmove="handleStageTouchMove" @touchend="handleStageTouchEnd">
+    <view
+      class="game-stage"
+      @touchstart="resumeBackgroundMusic"
+      @mousedown="resumeBackgroundMusic"
+      @touchmove="handleStageTouchMove"
+      @touchend="handleStageTouchEnd"
+    >
       <image class="stage-background" :src="topBackgroundUrl" mode="aspectFill" />
       <image class="top-grass" :src="topGrassUrl" mode="aspectFill" />
       <image class="bottom-background" :src="bottomBackgroundUrl" mode="aspectFill" />
 
       <image class="back-button" :src="returnUrl" mode="aspectFit" @tap="goBack" />
       <text class="page-title">单词拼图</text>
+      <view
+        class="music-button"
+        :class="{ playing: isMusicEnabled }"
+        :aria-label="isMusicEnabled ? '关闭背景音乐' : '开启背景音乐'"
+        @tap.stop="toggleBackgroundMusic"
+      >
+        <view class="music-spinner" />
+        <text class="music-note">♪</text>
+        <view v-if="!isMusicEnabled" class="music-muted-line" />
+      </view>
 
       <view class="progress-wrap" aria-label="游戏进度">
         <view class="progress-rail">
@@ -26,7 +42,11 @@
         <text class="word-meaning">{{ currentRoundData.meaning }}</text>
         <text class="word-description">{{ currentRoundData.description }}</text>
       </view>
-      <image class="robot" :src="robotUrl" mode="aspectFit" />
+      <view class="robot">
+        <image class="robot-image" :src="robotUrl" mode="aspectFit" />
+        <view class="robot-eyelid robot-eyelid-left" />
+        <view class="robot-eyelid robot-eyelid-right" />
+      </view>
 
       <view class="instruction-pill">
         <text>请把字母拖到下方框框里</text>
@@ -68,7 +88,7 @@
       <view class="bottom-actions">
         <image
           class="action-button"
-          :class="{ playing: isSpeaking, disabled: isGuiding || isPlayingCompletionAudio }"
+          :class="{ playing: isSpeaking, disabled: isPlayingCompletionAudio }"
           :src="playUrl"
           mode="aspectFit"
           @tap="speakWord"
@@ -118,6 +138,7 @@ import topCardUrl from './assets/game5_top.png';
 import topGrassUrl from './assets/game5_top2.png';
 import wrongAnswerUrl from './assets/game5_answer_wrong.png';
 import appleAudioUrl from './audio/apple.mp3';
+import backgroundMusicUrl from './audio/background-music.mp3';
 import openingGuideAudioUrl from './audio/opening-guide.mp3';
 import letterAAudioUrl from './audio/letter-a.mp3';
 import letterBAudioUrl from './audio/letter-b.mp3';
@@ -193,11 +214,13 @@ const answerSlots = ref<Array<string | null>>([]);
 const usedTileIds = ref<number[]>([]);
 const feedback = ref<Feedback>(null);
 const isComplete = ref(false);
+const completedRounds = ref(0);
 const draggingId = ref<number | null>(null);
 const dragStart = ref({ x: 0, y: 0 });
 const dragOffset = ref({ x: 0, y: 0 });
 const isSpeaking = ref(false);
 const isGuiding = ref(false);
+const isMusicEnabled = ref(true);
 const completionTime = ref('0分00秒');
 
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -209,14 +232,19 @@ let openingGuideAudio: UniApp.InnerAudioContext | null = null;
 let letterPlaceAudio: UniApp.InnerAudioContext | null = null;
 let letterSequenceAudio: UniApp.InnerAudioContext | null = null;
 let completionWordAudio: UniApp.InnerAudioContext | null = null;
+let backgroundMusicAudio: UniApp.InnerAudioContext | null = null;
 let completionSequenceToken = 0;
 let completionLetterIndex = 0;
 let completionSequenceWord = '';
+let openingGuidePending = false;
+let backgroundMusicStarted = false;
 const isPlayingCompletionAudio = ref(false);
 let gameStartedAt = Date.now();
 
 const currentRoundData = computed(() => rounds[currentRound.value]);
-const progressPercent = computed(() => (currentRound.value / rounds.length) * 100);
+const progressPercent = computed(() => (
+  (currentRound.value + (isRoundSolved.value ? 1 : 0)) / rounds.length
+) * 100);
 const isRoundSolved = computed(() => answerSlots.value.join('') === currentRoundData.value.word);
 const allLetters = computed(() => [
   ...currentRoundData.value.word.split(''),
@@ -273,6 +301,7 @@ function tileStyle(tile: LetterTile) {
 }
 
 function resetRound() {
+  clearCompletionTimer();
   answerSlots.value = Array(currentRoundData.value.word.length).fill(null);
   usedTileIds.value = [];
   feedback.value = null;
@@ -281,12 +310,12 @@ function resetRound() {
 }
 
 function tapTile(tile: LetterTile) {
-  if (draggingId.value !== null || isGuiding.value || isPlayingCompletionAudio.value || isComplete.value || feedback.value) return;
+  if (draggingId.value !== null || isPlayingCompletionAudio.value || isComplete.value || feedback.value) return;
   placeTile(tile);
 }
 
 function handleTileTouchStart(tile: LetterTile, event: any) {
-  if (isGuiding.value || isPlayingCompletionAudio.value || isComplete.value || feedback.value) return;
+  if (isPlayingCompletionAudio.value || isComplete.value || feedback.value) return;
   const touch = event.touches?.[0];
   draggingId.value = tile.id;
   dragStart.value = { x: touch?.clientX || 0, y: touch?.clientY || 0 };
@@ -332,7 +361,8 @@ function isTouchInAnswerArea(touch: any) {
 }
 
 function placeTile(tile: LetterTile) {
-  if (usedTileIds.value.includes(tile.id) || isGuiding.value || isPlayingCompletionAudio.value || feedback.value || isComplete.value) return;
+  if (usedTileIds.value.includes(tile.id) || isPlayingCompletionAudio.value || feedback.value || isComplete.value) return;
+  if (isGuiding.value) stopOpeningGuide();
   const targetIndex = answerSlots.value.findIndex((letter) => letter === null);
   if (targetIndex < 0) return;
 
@@ -353,26 +383,23 @@ function placeTile(tile: LetterTile) {
 
   if (isRoundSolved.value) {
     feedback.value = 'correct';
-    updateProgress((currentRound.value + 1) * 20, currentRound.value === rounds.length - 1);
+    completedRounds.value = Math.max(completedRounds.value, currentRound.value + 1);
+    const finishedAllRounds = completedRounds.value === rounds.length;
+    updateProgress((completedRounds.value / rounds.length) * 100, finishedAllRounds);
     playCompletionAudioSequence(currentRoundData.value.word);
     clearFeedbackTimer();
     feedbackTimer = setTimeout(() => {
       feedback.value = null;
       feedbackTimer = null;
     }, 1350);
-    if (currentRound.value === rounds.length - 1) {
-      if (completionTimer) clearTimeout(completionTimer);
+    if (finishedAllRounds) {
       completionTime.value = formatElapsed(Date.now() - gameStartedAt);
-      completionTimer = setTimeout(() => {
-        isComplete.value = true;
-        completionTimer = null;
-      }, 620);
     }
   }
 }
 
 function removeLetter(index: number) {
-  if (!answerSlots.value[index] || isGuiding.value || isPlayingCompletionAudio.value || feedback.value === 'correct' || isComplete.value) return;
+  if (!answerSlots.value[index] || isPlayingCompletionAudio.value || feedback.value === 'correct' || isComplete.value) return;
   const letter = answerSlots.value[index];
   const tile = allLetters.value.find((item) => item.letter === letter && usedTileIds.value.includes(item.id));
   if (tile) usedTileIds.value = usedTileIds.value.filter((id) => id !== tile.id);
@@ -395,6 +422,8 @@ function nextRound() {
 }
 
 function playLetterPlaceEffect() {
+  if (typeof window !== 'undefined') return;
+  if (!hasTransientAudioPermission()) return;
   if (!letterPlaceAudio) {
     letterPlaceAudio = uni.createInnerAudioContext();
     letterPlaceAudio.obeyMuteSwitch = false;
@@ -408,6 +437,15 @@ function finishCompletionAudio(token: number) {
   if (token !== completionSequenceToken) return;
   isPlayingCompletionAudio.value = false;
   isSpeaking.value = false;
+  if (completedRounds.value === rounds.length && currentRound.value === rounds.length - 1 && isRoundSolved.value) {
+    clearCompletionTimer();
+    completionTimer = setTimeout(() => {
+      if (completedRounds.value === rounds.length && currentRound.value === rounds.length - 1) {
+        isComplete.value = true;
+      }
+      completionTimer = null;
+    }, 360);
+  }
 }
 
 function advanceCompletionAudio(token: number, word: string) {
@@ -437,6 +475,12 @@ function playCompletionAudioSequence(word: string) {
   isSpeaking.value = true;
   wordAudio?.stop();
 
+  // H5 blocks synthetic/non-gesture playback; keep the state machine moving.
+  if (!hasTransientAudioPermission()) {
+    finishCompletionAudio(token);
+    return;
+  }
+
   if (!letterSequenceAudio) {
     letterSequenceAudio = uni.createInnerAudioContext();
     letterSequenceAudio.obeyMuteSwitch = false;
@@ -464,7 +508,8 @@ function stopCompletionAudioSequence() {
 }
 
 function speakWord() {
-  if (isGuiding.value || isPlayingCompletionAudio.value) return;
+  if (isPlayingCompletionAudio.value) return;
+  if (isGuiding.value) stopOpeningGuide();
   playCurrentWord();
 }
 
@@ -490,7 +535,7 @@ function playCurrentWord() {
 function finishOpeningGuide() {
   if (!isGuiding.value) return;
   isGuiding.value = false;
-  speakAfterDelay(140);
+  speakAfterDelay(140, true);
 }
 
 function playOpeningGuideAfterDelay(delay: number) {
@@ -504,16 +549,27 @@ function playOpeningGuideAfterDelay(delay: number) {
   isGuiding.value = true;
   openingGuideTimer = setTimeout(() => {
     openingGuideTimer = null;
-    if (!openingGuideAudio) {
-      openingGuideAudio = uni.createInnerAudioContext();
-      openingGuideAudio.obeyMuteSwitch = false;
-      openingGuideAudio.onEnded(finishOpeningGuide);
-      openingGuideAudio.onError(finishOpeningGuide);
+    if (!canStartAudio()) {
+      isGuiding.value = false;
+      openingGuidePending = true;
+      return;
     }
-    openingGuideAudio.stop();
-    openingGuideAudio.src = openingGuideAudioUrl;
-    openingGuideAudio.play();
+    playOpeningGuide();
   }, delay);
+}
+
+function playOpeningGuide() {
+  openingGuidePending = false;
+  isGuiding.value = true;
+  if (!openingGuideAudio) {
+    openingGuideAudio = uni.createInnerAudioContext();
+    openingGuideAudio.obeyMuteSwitch = false;
+    openingGuideAudio.onEnded(finishOpeningGuide);
+    openingGuideAudio.onError(finishOpeningGuide);
+  }
+  openingGuideAudio.stop();
+  openingGuideAudio.src = openingGuideAudioUrl;
+  openingGuideAudio.play();
 }
 
 function stopOpeningGuide() {
@@ -521,6 +577,7 @@ function stopOpeningGuide() {
     clearTimeout(openingGuideTimer);
     openingGuideTimer = null;
   }
+  openingGuidePending = false;
   isGuiding.value = false;
   openingGuideAudio?.stop();
 }
@@ -538,12 +595,65 @@ function speakWithSystemVoice(word: string) {
   window.speechSynthesis.speak(utterance);
 }
 
-function speakAfterDelay(delay: number) {
+function speakAfterDelay(delay: number, allowPlaybackAfterGuide = false) {
   if (nextTimer) clearTimeout(nextTimer);
+  if (typeof window !== 'undefined' && (hasTransientAudioPermission() || allowPlaybackAfterGuide)) {
+    speakWord();
+    return;
+  }
+  if (typeof window !== 'undefined') return;
   nextTimer = setTimeout(() => {
     speakWord();
     nextTimer = null;
   }, delay);
+}
+
+function createBackgroundMusic() {
+  if (backgroundMusicAudio) return;
+  backgroundMusicAudio = uni.createInnerAudioContext();
+  backgroundMusicAudio.obeyMuteSwitch = false;
+  backgroundMusicAudio.loop = true;
+  backgroundMusicAudio.volume = 0.18;
+  backgroundMusicAudio.src = backgroundMusicUrl;
+  backgroundMusicAudio.onError(() => {
+    backgroundMusicStarted = false;
+  });
+}
+
+function canStartAudio() {
+  if (typeof navigator === 'undefined') return true;
+  const navigatorWithActivation = navigator as Navigator & { userActivation?: { hasBeenActive: boolean } };
+  return navigatorWithActivation.userActivation?.hasBeenActive ?? true;
+}
+
+function hasTransientAudioPermission() {
+  if (typeof navigator === 'undefined') return true;
+  const navigatorWithActivation = navigator as Navigator & {
+    userActivation?: { hasBeenActive: boolean; isActive: boolean };
+  };
+  return navigatorWithActivation.userActivation?.isActive ?? true;
+}
+
+function startBackgroundMusic() {
+  if (!isMusicEnabled.value || backgroundMusicStarted || !hasTransientAudioPermission()) return;
+  createBackgroundMusic();
+  backgroundMusicStarted = true;
+  backgroundMusicAudio?.play();
+}
+
+function resumeBackgroundMusic(event?: any) {
+  if (isMusicEnabled.value) startBackgroundMusic();
+  if (event?.type !== 'mousedown' && openingGuidePending && hasTransientAudioPermission()) playOpeningGuide();
+}
+
+function toggleBackgroundMusic() {
+  isMusicEnabled.value = !isMusicEnabled.value;
+  if (isMusicEnabled.value) {
+    startBackgroundMusic();
+  } else {
+    backgroundMusicStarted = false;
+    backgroundMusicAudio?.pause();
+  }
 }
 
 function clearFeedbackTimer() {
@@ -574,6 +684,7 @@ function restart() {
   clearCompletionTimer();
   currentRound.value = 0;
   isComplete.value = false;
+  completedRounds.value = 0;
   gameStartedAt = Date.now();
   resetRound();
   playOpeningGuideAfterDelay(360);
@@ -586,6 +697,7 @@ function goBack() {
 onMounted(() => {
   gameStartedAt = Date.now();
   resetRound();
+  startBackgroundMusic();
   playOpeningGuideAfterDelay(520);
 });
 
@@ -605,6 +717,9 @@ onUnmounted(() => {
   letterSequenceAudio = null;
   completionWordAudio?.destroy();
   completionWordAudio = null;
+  backgroundMusicAudio?.destroy();
+  backgroundMusicAudio = null;
+  backgroundMusicStarted = false;
   if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
 });
 </script>
@@ -681,6 +796,52 @@ onUnmounted(() => {
   line-height: 1;
   text-align: center;
   white-space: nowrap;
+}
+
+.music-button {
+  position: absolute;
+  top: 2.45%;
+  right: 5.4%;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 9.8%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: #f2b532;
+  box-shadow: 0 0.35vh 0 #d98523, 0 0.45vh 0.8vh rgba(83, 115, 38, 0.18);
+}
+
+.music-spinner {
+  position: absolute;
+  inset: -0.35vh;
+  border: 0.35vh solid #fff7c8;
+  border-top-color: #fff;
+  border-radius: 50%;
+}
+
+.music-button.playing .music-spinner {
+  animation: music-spin 2.4s linear infinite;
+}
+
+.music-note {
+  color: #fff;
+  font-size: 3.1vh;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 0.16vh 0 rgba(146, 78, 14, 0.3);
+}
+
+.music-muted-line {
+  position: absolute;
+  width: 72%;
+  height: 0.32vh;
+  border-radius: 1vh;
+  background: #fff;
+  transform: rotate(-45deg);
+  box-shadow: 0 0.12vh 0 rgba(146, 78, 14, 0.25);
 }
 
 .progress-wrap {
@@ -807,6 +968,28 @@ onUnmounted(() => {
   z-index: 2;
   animation: robot-float 2.8s ease-in-out infinite;
 }
+
+.robot-image {
+  width: 100%;
+  height: 100%;
+}
+
+.robot-eyelid {
+  position: absolute;
+  top: 39.2%;
+  width: 12.7%;
+  height: 10.4%;
+  border-bottom: 0.18vh solid #26353b;
+  border-radius: 50%;
+  background: #fff8eb;
+  opacity: 0;
+  transform: scaleY(0);
+  transform-origin: top;
+  animation: robot-blink 4.6s ease-in-out infinite;
+}
+
+.robot-eyelid-left { left: 25.8%; }
+.robot-eyelid-right { left: 59%; }
 
 .instruction-pill {
   position: absolute;
@@ -1029,6 +1212,10 @@ onUnmounted(() => {
   to { transform: scale(1.05); }
 }
 
+@keyframes music-spin {
+  to { transform: rotate(360deg); }
+}
+
 @keyframes tile-bob {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-4px); }
@@ -1048,6 +1235,17 @@ onUnmounted(() => {
 @keyframes robot-float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-5px); }
+}
+
+@keyframes robot-blink {
+  0%, 43%, 47%, 74%, 78%, 100% {
+    opacity: 0;
+    transform: scaleY(0);
+  }
+  44.5%, 45.5%, 75.5%, 76.5% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
 }
 
 .feedback-pop-enter-active,

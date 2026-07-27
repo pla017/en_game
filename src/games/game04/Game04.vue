@@ -1,8 +1,24 @@
 <template>
-  <view class="drum-game mini-game-screen">
+  <view
+    class="drum-game mini-game-screen"
+    @touchstart="resumeBackgroundMusic"
+    @mousedown="resumeBackgroundMusic"
+  >
     <image class="scene-bg" :src="backgroundUrl" mode="aspectFill" />
 
     <image class="back-button tap-image" :src="returnUrl" mode="aspectFit" @tap="goBack" />
+    <view
+      class="music-button tap-image"
+      :class="{ playing: isMusicPlaying, muted: !isMusicEnabled }"
+      :aria-label="isMusicEnabled ? '关闭背景音乐' : '开启背景音乐'"
+      @tap.stop="toggleBackgroundMusic"
+    >
+      <view class="music-disc">
+        <text class="music-note">♪</text>
+        <view class="music-disc-center" />
+      </view>
+      <view v-if="!isMusicEnabled" class="music-slash" />
+    </view>
     <image class="game-title" :src="titleUrl" mode="aspectFit" />
 
     <view class="progress-wrap" aria-label="游戏进度">
@@ -77,12 +93,13 @@
     </view>
 
     <view v-if="isComplete" class="complete-layer">
-      <view class="complete-panel">
-        <text class="complete-title">击鼓认词完成！</text>
-        <text class="complete-copy">你已经听出了 {{ rounds.length }} 个单词</text>
-        <view class="complete-stars"><text>★ ★ ★</text></view>
-        <view class="restart-button" @tap="restart">再玩一次</view>
+      <text class="complete-trophy" aria-hidden="true">🏆</text>
+      <image class="complete-ribbon" :src="completeBannerUrl" mode="scaleToFill" />
+      <view class="complete-stars" aria-label="三颗星">
+        <image v-for="star in 3" :key="star" :src="completeStarUrl" mode="aspectFit" />
       </view>
+      <text class="complete-time">用时 <text>{{ formattedTime }}</text></text>
+      <view class="complete-next" @tap="nextLevel">下一关</view>
     </view>
   </view>
 </template>
@@ -101,11 +118,10 @@ import returnUrl from './assets/game4_return.png';
 import impactMarkUrl from './assets/game4_boom1.png';
 import titleUrl from './assets/game4_tit.png';
 import impactRaysUrl from './assets/game4_boom2.png';
-import drum1Url from './assets/game4_drum1.png';
-import drum2Url from './assets/game4_drum2.png';
-import drum3Url from './assets/game4_drum3.png';
 import drum4Url from './assets/game4_drum4.png';
-import drum5Url from './assets/game4_drum5.png';
+import completeBannerUrl from '../game06/assets/game6_excise.png';
+import completeStarUrl from '../game06/assets/game6_star.png';
+import backgroundMusicUrl from '../game05/audio/background-music.mp3';
 import bananaAudioUrl from './audio/banana.mp3';
 import correctAudioUrl from './audio/correct.mp3';
 import correctVoiceAudioUrl from './audio/correct-voice.mp3';
@@ -142,13 +158,8 @@ const rounds: Round[] = [
 ];
 
 const positions: Position[] = ['left-top', 'center-top', 'right-top', 'left-bottom', 'center-bottom'];
-const drumImages: Record<Position, string> = {
-  'left-top': drum2Url,
-  'center-top': drum1Url,
-  'right-top': drum5Url,
-  'left-bottom': drum3Url,
-  'center-bottom': drum4Url
-};
+// Every option uses the same front-facing drum so its visible size and angle stay consistent.
+const drumImageUrl = drum4Url;
 const wordAudioUrls: Record<string, string> = {
   banana: bananaAudioUrl,
   mango: mangoAudioUrl,
@@ -173,17 +184,29 @@ const isSpeaking = ref(false);
 const isGuiding = ref(false);
 const isComplete = ref(false);
 const wrongAttempts = ref(0);
+const elapsedSeconds = ref(0);
+const studyStartedAt = ref(0);
+const isMusicEnabled = ref(true);
+const isMusicPlaying = ref(false);
 
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 let correctVoiceTimer: ReturnType<typeof setTimeout> | null = null;
 let openingGuideTimer: ReturnType<typeof setTimeout> | null = null;
+let openingGuideFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 let speechTimer: ReturnType<typeof setTimeout> | null = null;
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+let backgroundMusicAudio: UniApp.InnerAudioContext | null = null;
 let wordAudio: UniApp.InnerAudioContext | null = null;
 let correctVoiceAudio: UniApp.InnerAudioContext | null = null;
 let openingGuideAudio: UniApp.InnerAudioContext | null = null;
 const effectAudios: Partial<Record<EffectName, UniApp.InnerAudioContext>> = {};
 
 const progressPercent = computed(() => (currentRound.value / rounds.length) * 100);
+const formattedTime = computed(() => {
+  const minutes = Math.floor(elapsedSeconds.value / 60);
+  const seconds = (elapsedSeconds.value % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+});
 const isLocked = computed(() => isGuiding.value || hasAnswered.value || Boolean(feedback.value));
 const instruction = computed(() => {
   if (isSpeaking.value) return '认真听，找出对应的单词';
@@ -197,12 +220,16 @@ function buildDrums() {
     id: `${currentRound.value}-${round.options[index]}`,
     word: round.options[index],
     position,
-    image: drumImages[position]
+    image: drumImageUrl
   }));
 }
 
 function finishOpeningGuide() {
   if (!isGuiding.value) return;
+  if (openingGuideFallbackTimer) {
+    clearTimeout(openingGuideFallbackTimer);
+    openingGuideFallbackTimer = null;
+  }
   isGuiding.value = false;
   if (currentRound.value === 0 && !isComplete.value) sayWord();
 }
@@ -223,6 +250,8 @@ function playOpeningGuide() {
   openingGuideAudio.stop();
   openingGuideAudio.src = openingGuideAudioUrl;
   openingGuideAudio.play();
+  // Some runtimes do not dispatch ended/error for an autoplay-blocked guide clip.
+  openingGuideFallbackTimer = setTimeout(finishOpeningGuide, 4300);
 }
 
 function sayWord() {
@@ -279,6 +308,47 @@ function clearFeedback() {
   wrongDrumId.value = null;
 }
 
+function ensureBackgroundMusic() {
+  if (backgroundMusicAudio) return backgroundMusicAudio;
+  backgroundMusicAudio = uni.createInnerAudioContext();
+  backgroundMusicAudio.obeyMuteSwitch = false;
+  backgroundMusicAudio.loop = true;
+  backgroundMusicAudio.volume = 0.16;
+  backgroundMusicAudio.src = backgroundMusicUrl;
+  backgroundMusicAudio.onPlay(() => {
+    isMusicPlaying.value = true;
+  });
+  backgroundMusicAudio.onPause(() => {
+    isMusicPlaying.value = false;
+  });
+  backgroundMusicAudio.onStop(() => {
+    isMusicPlaying.value = false;
+  });
+  backgroundMusicAudio.onError(() => {
+    isMusicPlaying.value = false;
+  });
+  return backgroundMusicAudio;
+}
+
+function playBackgroundMusic() {
+  if (!isMusicEnabled.value) return;
+  ensureBackgroundMusic().play();
+}
+
+function resumeBackgroundMusic() {
+  if (isMusicEnabled.value && !isMusicPlaying.value) playBackgroundMusic();
+}
+
+function toggleBackgroundMusic() {
+  isMusicEnabled.value = !isMusicEnabled.value;
+  if (isMusicEnabled.value) {
+    playBackgroundMusic();
+    return;
+  }
+  isMusicPlaying.value = false;
+  backgroundMusicAudio?.pause();
+}
+
 function playEffect(effect: EffectName) {
   let audio = effectAudios[effect];
   if (!audio) {
@@ -320,7 +390,10 @@ function tapDrum(drum: Drum) {
     feedbackTimer = setTimeout(() => {
       feedback.value = null;
       feedbackTimer = null;
-      if (isLastRound) isComplete.value = true;
+      if (isLastRound) {
+        elapsedSeconds.value = Math.max(1, Math.round((Date.now() - studyStartedAt.value) / 1000));
+        isComplete.value = true;
+      }
     }, isLastRound ? 1250 : 1650);
     return;
   }
@@ -329,7 +402,6 @@ function tapDrum(drum: Drum) {
   wrongDrumId.value = drum.id;
   feedback.value = 'wrong';
   setTimeout(() => playEffect('wrong'), 70);
-  vibrate('light');
   feedbackTimer = setTimeout(() => {
     clearFeedback();
     sayWord();
@@ -358,6 +430,7 @@ function restart() {
   isGuiding.value = false;
   openingGuideAudio?.stop();
   if (openingGuideTimer) clearTimeout(openingGuideTimer);
+  if (openingGuideFallbackTimer) clearTimeout(openingGuideFallbackTimer);
   resetProgress();
   currentRound.value = 0;
   hasAnswered.value = false;
@@ -365,12 +438,18 @@ function restart() {
   hitDrumId.value = null;
   wrongDrumId.value = null;
   wrongAttempts.value = 0;
+  elapsedSeconds.value = 0;
+  studyStartedAt.value = Date.now();
   clearFeedback();
   buildDrums();
   openingGuideTimer = setTimeout(() => {
     openingGuideTimer = null;
     playOpeningGuide();
   }, 350);
+}
+
+function nextLevel() {
+  uni.redirectTo({ url: '/pages/play/play?id=game-05' });
 }
 
 function goBack() {
@@ -385,7 +464,14 @@ function vibrate(type: 'light' | 'medium') {
 }
 
 onMounted(() => {
+  studyStartedAt.value = Date.now();
   buildDrums();
+  playBackgroundMusic();
+  clockTimer = setInterval(() => {
+    if (!isComplete.value && studyStartedAt.value) {
+      elapsedSeconds.value = Math.floor((Date.now() - studyStartedAt.value) / 1000);
+    }
+  }, 1000);
   openingGuideTimer = setTimeout(() => {
     openingGuideTimer = null;
     playOpeningGuide();
@@ -396,7 +482,9 @@ onUnmounted(() => {
   clearFeedback();
   if (correctVoiceTimer) clearTimeout(correctVoiceTimer);
   if (openingGuideTimer) clearTimeout(openingGuideTimer);
+  if (openingGuideFallbackTimer) clearTimeout(openingGuideFallbackTimer);
   if (speechTimer) clearTimeout(speechTimer);
+  if (clockTimer) clearInterval(clockTimer);
   isGuiding.value = false;
   openingGuideAudio?.destroy();
   openingGuideAudio = null;
@@ -404,6 +492,8 @@ onUnmounted(() => {
   wordAudio = null;
   correctVoiceAudio?.destroy();
   correctVoiceAudio = null;
+  backgroundMusicAudio?.destroy();
+  backgroundMusicAudio = null;
   Object.values(effectAudios).forEach((audio) => audio?.destroy());
   if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
 });
@@ -430,6 +520,41 @@ onUnmounted(() => {
   width: 80rpx;
   height: 76rpx;
 }
+
+.music-button {
+  position: absolute;
+  z-index: 10;
+  top: 64rpx;
+  right: 46rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 106rpx;
+  height: 106rpx;
+  border: 6rpx solid rgba(255, 255, 255, 0.96);
+  border-radius: 50%;
+  background: #f2b532;
+  box-shadow: 0 7rpx 0 #d98523, 0 9rpx 16rpx rgba(83, 115, 38, 0.18);
+}
+
+.music-disc {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 50%;
+  background: #fff;
+  animation: music-spin 3.2s linear infinite;
+  animation-play-state: paused;
+}
+
+.music-button.playing .music-disc { animation-play-state: running; }
+.music-note { color: #f29e25; font-family: Arial, sans-serif; font-size: 50rpx; font-weight: 900; line-height: 1; transform: translate(-2rpx, -2rpx); }
+.music-disc-center { position: absolute; right: 10rpx; bottom: 10rpx; width: 10rpx; height: 10rpx; border-radius: 50%; background: #39b4d6; }
+.music-slash { position: absolute; width: 78rpx; height: 8rpx; border: 3rpx solid #fff; border-radius: 8rpx; background: #ee5e5e; transform: rotate(-45deg); box-shadow: 0 2rpx 0 rgba(135, 48, 48, 0.24); }
+.music-button.muted { background: #9aadae; box-shadow: 0 7rpx 0 #747f80, 0 9rpx 16rpx rgba(70, 70, 70, 0.18); }
 
 .game-title {
   position: absolute;
@@ -544,7 +669,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   width: 230rpx;
-  height: 250rpx;
+  height: 194rpx;
   transition: transform 0.14s ease, filter 0.14s ease;
 }
 
@@ -608,7 +733,7 @@ onUnmounted(() => {
 }
 
 .word-center-bottom {
-  top: -30rpx;
+  top: -48rpx;
   color: #d926b8;
   text-transform: capitalize;
   transform: translateX(-50%);
@@ -719,31 +844,89 @@ onUnmounted(() => {
   position: absolute;
   z-index: 40;
   inset: 0;
+  overflow: hidden;
+  background: rgba(20, 38, 52, 0.62);
+}
+
+.complete-trophy {
+  position: absolute;
+  top: 8%;
+  left: 50%;
+  z-index: 1;
+  font-size: 170rpx;
+  line-height: 1;
+  text-shadow: 0 8rpx 0 rgba(137, 66, 15, 0.28), 0 0 22rpx rgba(255, 225, 86, 0.78);
+  transform: translateX(-50%);
+}
+
+.complete-ribbon {
+  position: absolute;
+  top: 31%;
+  left: 0;
+  width: 100%;
+  height: 130rpx;
+}
+
+.complete-stars {
+  position: absolute;
+  top: 44%;
+  left: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 64rpx;
-  background: rgba(24, 110, 167, 0.28);
-}
-
-.complete-panel {
+  gap: 18rpx;
   width: 100%;
-  padding: 62rpx 42rpx 46rpx;
-  border: 6rpx solid #fff;
-  border-radius: 26rpx;
-  background: #fff9e5;
-  box-shadow: 0 12rpx 0 rgba(207, 119, 55, 0.25);
-  text-align: center;
+  transform: translateX(-50%);
 }
 
-.complete-title { display: block; color: #f06043; font-size: 46rpx; font-weight: 800; }
-.complete-copy { display: block; margin-top: 22rpx; color: #4e88a9; font-size: 28rpx; }
-.complete-stars { margin: 26rpx 0 34rpx; color: #ffc746; font-size: 48rpx; letter-spacing: 6rpx; }
-.restart-button { width: 260rpx; height: 76rpx; margin: 0 auto; border-radius: 38rpx; background: #ff7a43; color: #fff; font-size: 30rpx; font-weight: 800; line-height: 76rpx; box-shadow: 0 6rpx 0 #d95735; }
+.complete-stars image {
+  width: 72rpx;
+  height: 70rpx;
+  filter: drop-shadow(0 5rpx 0 rgba(112, 67, 8, 0.28));
+}
+
+.complete-time {
+  position: absolute;
+  top: 53%;
+  left: 50%;
+  color: #fff;
+  font-size: 38rpx;
+  font-weight: 900;
+  text-shadow: 0 3rpx 0 rgba(171, 89, 13, 0.66);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.complete-time text {
+  margin-left: 8rpx;
+  color: #ffb625;
+  font-size: 64rpx;
+  letter-spacing: 2rpx;
+  text-shadow: -2rpx -2rpx 0 #fff, 2rpx -2rpx 0 #fff, 2rpx 2rpx 0 #fff, -2rpx 2rpx 0 #fff, 0 4rpx 0 rgba(171, 89, 13, 0.42);
+}
+
+.complete-next {
+  position: absolute;
+  top: 68%;
+  left: 50%;
+  width: 232rpx;
+  height: 82rpx;
+  border: 4rpx solid #fff;
+  border-radius: 12rpx;
+  background: linear-gradient(180deg, #2cebb3 0%, #10c99b 100%);
+  box-shadow: 0 7rpx 0 #079874;
+  color: #fff;
+  font-size: 40rpx;
+  font-weight: 900;
+  line-height: 76rpx;
+  text-align: center;
+  text-shadow: 0 3rpx 0 rgba(5, 116, 89, 0.35);
+  transform: translateX(-50%);
+}
 
 @keyframes dot-bounce { 0%, 100% { transform: translateY(0); opacity: 0.3; } 45% { transform: translateY(-7rpx); opacity: 1; } }
-@keyframes drum-hit { 0%, 100% { transform: scale(1); } 20% { transform: scale(0.84) rotate(-5deg); } 48% { transform: scale(1.2) rotate(4deg); } 70% { transform: scale(0.97) rotate(-1deg); } }
-@keyframes drum-shake { 0%, 100% { transform: translateX(0); } 16%, 48% { transform: translateX(-20rpx) rotate(-5deg); } 32%, 64% { transform: translateX(20rpx) rotate(5deg); } 78% { transform: translateX(-8rpx); } }
+@keyframes drum-hit { 0%, 100% { transform: scale(1); } 20% { transform: scale(0.84); } 48% { transform: scale(1.2); } 70% { transform: scale(0.97); } }
+@keyframes drum-shake { 0%, 100% { transform: translateX(0); } 16%, 48% { transform: translateX(-20rpx); } 32%, 64% { transform: translateX(20rpx); } 78% { transform: translateX(-8rpx); } }
 @keyframes burst-pop { 0% { opacity: 0; transform: scale(0.3) rotate(-22deg); } 56% { opacity: 1; transform: scale(1.16) rotate(8deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes drumstick-strike {
   0% { opacity: 0; transform: translate(32rpx, -52rpx) rotate(-38deg); }
@@ -766,6 +949,7 @@ onUnmounted(() => {
 @keyframes feedback-pop { 0% { opacity: 0; transform: scale(0.38) translateY(34rpx); } 65% { opacity: 1; transform: scale(1.12) translateY(-8rpx); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
 @keyframes wrong-feedback-pop { 0% { opacity: 0; transform: scale(0.52); } 56% { opacity: 1; transform: scale(1.12) rotate(-3deg); } 72% { transform: scale(0.98) rotate(2deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes feedback-halo { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 100% { opacity: 0.42; transform: translate(-50%, -50%) scale(1); } }
+@keyframes music-spin { to { transform: rotate(360deg); } }
 
 @media (max-height: 1450rpx) {
   .drum-stage { top: 540rpx; transform: scale(0.88); transform-origin: top center; }

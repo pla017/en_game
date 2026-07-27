@@ -5,6 +5,19 @@
 
       <image class="return-button tap-image" :src="returnUrl" mode="aspectFit" @tap="goBack" />
 
+      <view
+        class="music-button tap-image"
+        :class="{ playing: isMusicPlaying, muted: !isMusicEnabled }"
+        :aria-label="isMusicEnabled ? '关闭背景音乐' : '开启背景音乐'"
+        @tap.stop="toggleBackgroundMusic"
+      >
+        <view class="music-disc">
+          <text class="music-note">♪</text>
+          <view class="music-disc-center" />
+        </view>
+        <view v-if="!isMusicEnabled" class="music-slash" />
+      </view>
+
       <text class="game-title">跟读小能手</text>
 
       <view class="progress-wrap" aria-label="学习进度">
@@ -110,9 +123,11 @@ import progressBgUrl from './assets/progress_bar_bg.png';
 import progressFillUrl from './assets/progress_bar_ing.png';
 import progressPointUrl from './assets/progress_bar_point.png';
 import returnUrl from './assets/game3_return.png';
+import backgroundMusicUrl from './audio/background-music.mp3';
 import beeAudioUrl from './audio/bee.mp3';
 import cloudAudioUrl from './audio/cloud.mp3';
 import flowerAudioUrl from './audio/flower.mp3';
+import openingGuideAudioUrl from './audio/opening-guide.mp3';
 import sunAudioUrl from './audio/sun.mp3';
 import treeAudioUrl from './audio/tree.mp3';
 
@@ -157,6 +172,9 @@ const countdown = ref(3);
 const isRecording = ref(false);
 const recordingSecondsLeft = ref(15);
 const isRobotSpeaking = ref(false);
+const isGuiding = ref(false);
+const isMusicEnabled = ref(true);
+const isMusicPlaying = ref(false);
 const isFinalizingRecording = ref(false);
 const canRecord = ref(false);
 const hasPassed = ref(false);
@@ -179,11 +197,14 @@ let maxRecordTimer: ReturnType<typeof setTimeout> | null = null;
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
 let recordingCountdownTimer: ReturnType<typeof setInterval> | null = null;
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
+let openingGuideFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 let recordingStartedAt = 0;
 let recordingWord = '';
 let pendingFileCapture: Promise<void> = Promise.resolve();
 let wordAudio: UniApp.InnerAudioContext | null = null;
+let openingGuideAudio: UniApp.InnerAudioContext | null = null;
+let backgroundMusic: UniApp.InnerAudioContext | null = null;
 let practiceFinalized = false;
 let speechMatched = false;
 let studyStartedAt = 0;
@@ -206,6 +227,96 @@ function setBubbleText(message: string) {
   bubbleVersion.value += 1;
 }
 
+function setBackgroundMusicVolume(volume: number) {
+  if (backgroundMusic) backgroundMusic.volume = volume;
+}
+
+function ensureBackgroundMusic() {
+  if (backgroundMusic) return backgroundMusic;
+  backgroundMusic = uni.createInnerAudioContext();
+  backgroundMusic.obeyMuteSwitch = false;
+  backgroundMusic.loop = true;
+  backgroundMusic.volume = 0.12;
+  backgroundMusic.src = backgroundMusicUrl;
+  backgroundMusic.onPlay(() => {
+    isMusicPlaying.value = true;
+  });
+  backgroundMusic.onPause(() => {
+    isMusicPlaying.value = false;
+  });
+  backgroundMusic.onStop(() => {
+    isMusicPlaying.value = false;
+  });
+  backgroundMusic.onError(() => {
+    isMusicPlaying.value = false;
+  });
+  return backgroundMusic;
+}
+
+function playBackgroundMusic() {
+  if (!isMusicEnabled.value) return;
+  const music = ensureBackgroundMusic();
+  isMusicPlaying.value = true;
+  music.play();
+}
+
+function toggleBackgroundMusic() {
+  isMusicEnabled.value = !isMusicEnabled.value;
+  if (isMusicEnabled.value) {
+    playBackgroundMusic();
+    return;
+  }
+  isMusicPlaying.value = false;
+  backgroundMusic?.pause();
+}
+
+function finishOpeningGuide() {
+  if (!isGuiding.value) return;
+  isGuiding.value = false;
+  isRobotSpeaking.value = false;
+  if (openingGuideFallbackTimer) {
+    clearTimeout(openingGuideFallbackTimer);
+    openingGuideFallbackTimer = null;
+  }
+  if (isComplete.value) {
+    setBackgroundMusicVolume(0.12);
+    return;
+  }
+  if (previewTimer) clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    previewTimer = null;
+    startWordPreview();
+  }, 160);
+}
+
+function stopOpeningGuide() {
+  if (openingGuideFallbackTimer) {
+    clearTimeout(openingGuideFallbackTimer);
+    openingGuideFallbackTimer = null;
+  }
+  isGuiding.value = false;
+  openingGuideAudio?.stop();
+}
+
+function playOpeningGuide() {
+  stopOpeningGuide();
+  canRecord.value = false;
+  isGuiding.value = true;
+  isRobotSpeaking.value = true;
+  setBubbleText('先听操作提示，再跟着原音练习吧。');
+  setBackgroundMusicVolume(0.04);
+  if (!openingGuideAudio) {
+    openingGuideAudio = uni.createInnerAudioContext();
+    openingGuideAudio.obeyMuteSwitch = false;
+    openingGuideAudio.onEnded(finishOpeningGuide);
+    openingGuideAudio.onError(finishOpeningGuide);
+  }
+  openingGuideAudio.stop();
+  openingGuideAudio.src = openingGuideAudioUrl;
+  openingGuideFallbackTimer = setTimeout(finishOpeningGuide, 7000);
+  openingGuideAudio.play();
+}
+
 function getSpeechRecognition() {
   if (typeof window === 'undefined') return null;
   const speechWindow = window as typeof window & {
@@ -217,7 +328,7 @@ function getSpeechRecognition() {
 }
 
 function playOriginal() {
-  if (isRecording.value || isPreparing.value || isFinalizingRecording.value || isComplete.value || isPreviewing) return;
+  if (isGuiding.value || isRecording.value || isPreparing.value || isFinalizingRecording.value || isComplete.value || isPreviewing) return;
   startWordPreview();
 }
 
@@ -226,6 +337,7 @@ function startWordPreview() {
   isPreviewing = true;
   canRecord.value = false;
   isRobotSpeaking.value = false;
+  setBackgroundMusicVolume(0.04);
   setBubbleText('正在播放原音，请认真听哦。');
   if (previewFallbackTimer) clearTimeout(previewFallbackTimer);
   previewFallbackTimer = setTimeout(() => {
@@ -238,6 +350,7 @@ function finishWordPreview() {
   isPreviewing = false;
   isRobotSpeaking.value = false;
   canRecord.value = true;
+  setBackgroundMusicVolume(0.12);
   if (previewFallbackTimer) {
     clearTimeout(previewFallbackTimer);
     previewFallbackTimer = null;
@@ -272,6 +385,7 @@ function playWordAudio(audioUrl: string) {
     wordAudio.onError(() => {
       isPreviewing = false;
       isRobotSpeaking.value = false;
+      setBackgroundMusicVolume(0.12);
       if (previewFallbackTimer) {
         clearTimeout(previewFallbackTimer);
         previewFallbackTimer = null;
@@ -300,6 +414,10 @@ function speak(value: string) {
 }
 
 function beginRecording() {
+  if (isGuiding.value) {
+    setBubbleText('请先听完操作提示和两遍单词原音。');
+    return;
+  }
   if (isRecording.value || isPreparing.value || isFinalizingRecording.value || isComplete.value) return;
   if (isPreviewing || !canRecord.value) {
     setBubbleText('请先完整听两遍单词，再开始录音。');
@@ -333,6 +451,7 @@ function startRecordingNow() {
   recordingSecondsLeft.value = 15;
   recordingWord = currentWord.value.word;
   pendingFileCapture = Promise.resolve();
+  setBackgroundMusicVolume(0.02);
   setBubbleText('正在录音，点击红色按钮结束。');
   startSpeechRecognition();
   startMediaRecording();
@@ -363,6 +482,7 @@ function finishRecording(autoStop = false) {
   if ((!isRecording.value && !awaitingRecorderStop) || isFinalizingRecording.value) return;
   isFinalizingRecording.value = true;
   isRecording.value = false;
+  setBackgroundMusicVolume(0.12);
   stopRecordingCountdown();
   stopSpeechRecognition();
   if (maxRecordTimer) {
@@ -396,6 +516,7 @@ function cancelRecordingPreparation() {
   countdownTimer = null;
   isPreparing.value = false;
   countdown.value = 3;
+  setBackgroundMusicVolume(0.12);
   setBubbleText('已取消录音，准备好后再点击录音按钮。');
 }
 
@@ -464,6 +585,7 @@ function startMediaRecording() {
           usingUniRecorder = false;
           isRecording.value = false;
           isFinalizingRecording.value = false;
+          setBackgroundMusicVolume(0.12);
           stopRecordingCountdown();
           setBubbleText('录音没有成功，请检查麦克风权限后再试。');
         });
@@ -615,6 +737,7 @@ function nextWord() {
 }
 
 function restart() {
+  stopOpeningGuide();
   stopSpeechRecognition();
   stopMediaRecording();
   if (fallbackTimer) clearTimeout(fallbackTimer);
@@ -645,7 +768,7 @@ function restart() {
   recordingsByWord.value = {};
   uni.setStorageSync('game03-recordings', JSON.stringify({}));
   studyStartedAt = Date.now();
-  startWordPreview();
+  playOpeningGuide();
 }
 
 function normalize(value: string) {
@@ -658,15 +781,20 @@ function goBack() {
 
 onMounted(() => {
   studyStartedAt = Date.now();
+  playBackgroundMusic();
   clockTimer = setInterval(() => {
     if (!isComplete.value && studyStartedAt) {
       elapsedSeconds.value = Math.floor((Date.now() - studyStartedAt) / 1000);
     }
   }, 1000);
-  previewTimer = setTimeout(() => startWordPreview(), 220);
+  previewTimer = setTimeout(() => {
+    previewTimer = null;
+    playOpeningGuide();
+  }, 220);
 });
 
 onUnmounted(() => {
+  stopOpeningGuide();
   stopSpeechRecognition();
   stopMediaRecording();
   if (fallbackTimer) clearTimeout(fallbackTimer);
@@ -674,10 +802,16 @@ onUnmounted(() => {
   stopRecordingCountdown();
   if (countdownTimer) clearInterval(countdownTimer);
   if (previewTimer) clearTimeout(previewTimer);
+  if (openingGuideFallbackTimer) clearTimeout(openingGuideFallbackTimer);
   if (previewFallbackTimer) clearTimeout(previewFallbackTimer);
   if (clockTimer) clearInterval(clockTimer);
   wordAudio?.destroy();
   wordAudio = null;
+  openingGuideAudio?.destroy();
+  openingGuideAudio = null;
+  backgroundMusic?.destroy();
+  backgroundMusic = null;
+  isMusicPlaying.value = false;
   isRobotSpeaking.value = false;
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
 });
@@ -703,6 +837,38 @@ onUnmounted(() => {
 
 .scene-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .return-button { position: absolute; z-index: 10; top: 4.9%; left: 6.2%; width: 120rpx; height: 120rpx; }
+.music-button {
+  position: absolute;
+  z-index: 10;
+  top: 5.3%;
+  right: 6.7%;
+  display: flex;
+  width: 106rpx;
+  height: 106rpx;
+  align-items: center;
+  justify-content: center;
+  border: 7rpx solid rgba(255, 255, 255, 0.96);
+  border-radius: 50%;
+  background: #38a9dd;
+  box-shadow: 0 7rpx 0 #237fba, 0 9rpx 16rpx rgba(25, 121, 184, 0.25);
+}
+.music-disc {
+  position: relative;
+  display: flex;
+  width: 76rpx;
+  height: 76rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #fff;
+  animation: music-spin 3.2s linear infinite;
+  animation-play-state: paused;
+}
+.music-button.playing .music-disc { animation-play-state: running; }
+.music-note { color: #258fc9; font-family: Arial, sans-serif; font-size: 50rpx; font-weight: 900; line-height: 1; transform: translate(-2rpx, -2rpx); }
+.music-disc-center { position: absolute; right: 10rpx; bottom: 10rpx; width: 10rpx; height: 10rpx; border-radius: 50%; background: #f5b72e; }
+.music-slash { position: absolute; width: 78rpx; height: 8rpx; border: 3rpx solid #fff; border-radius: 8rpx; background: #ee5e5e; transform: rotate(-45deg); box-shadow: 0 2rpx 0 rgba(135, 48, 48, 0.24); }
+.music-button.muted { background: #8ab7c9; box-shadow: 0 7rpx 0 #658e9f, 0 9rpx 16rpx rgba(42, 91, 112, 0.2); }
 .game-title {
   position: absolute;
   z-index: 4;
@@ -787,6 +953,7 @@ onUnmounted(() => {
 @keyframes robot-talk { from { transform: translateY(0) rotate(-1deg); } to { transform: translateY(-5rpx) rotate(1deg); } }
 @keyframes mouth-talk { from { height: 4rpx; transform: scaleX(0.9); } to { height: 10rpx; transform: scaleX(1.04); } }
 @keyframes bubble-talk { from { transform: translateY(0) scale(1); } to { transform: translateY(-5rpx) scale(1.015); } }
+@keyframes music-spin { to { transform: rotate(360deg); } }
 
 @media (max-height: 700px) {
   .word-panel { top: 27.5%; }
