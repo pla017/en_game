@@ -1,8 +1,9 @@
 <template>
   <view
     class="drum-game mini-game-screen"
-    @touchstart="resumeBackgroundMusic"
-    @mousedown="resumeBackgroundMusic"
+    @touchstart="resumePageAudio"
+    @mousedown="resumePageAudio"
+    @tap="resumePageAudio"
   >
     <image class="scene-bg" :src="backgroundUrl" mode="aspectFill" />
 
@@ -10,6 +11,7 @@
     <view
       class="music-button tap-image"
       :class="{ playing: isMusicPlaying, muted: !isMusicEnabled }"
+      :style="musicButtonStyle"
       :aria-label="isMusicEnabled ? '关闭背景音乐' : '开启背景音乐'"
       @tap.stop="toggleBackgroundMusic"
     >
@@ -42,25 +44,25 @@
         class="drum-button"
         :class="[
           `drum-${drum.position}`,
-          { 'is-hit': hitDrumId === drum.id, 'is-wrong': wrongDrumId === drum.id }
+          { 'is-hit': isDrumStruck(drum.id), 'is-wrong': wrongDrumId === drum.id }
         ]"
         @tap="tapDrum(drum)"
       >
         <image class="drum-image" :src="drum.image" mode="aspectFit" />
         <text class="word-label" :class="`word-${drum.position}`">{{ drum.word }}</text>
         <image
-          v-if="hitDrumId === drum.id"
+          v-if="isDrumStruck(drum.id)"
           class="burst impact-mark"
           :src="impactMarkUrl"
           mode="aspectFit"
         />
         <image
-          v-if="hitDrumId === drum.id"
+          v-if="isDrumStruck(drum.id)"
           class="burst impact-rays"
           :src="impactRaysUrl"
           mode="aspectFit"
         />
-        <view v-if="hitDrumId === drum.id" class="drumstick" />
+        <view v-if="isDrumStruck(drum.id)" class="drumstick" />
       </view>
     </view>
 
@@ -93,19 +95,21 @@
     </view>
 
     <view v-if="isComplete" class="complete-layer">
-      <text class="complete-trophy" aria-hidden="true">🏆</text>
-      <image class="complete-ribbon" :src="completeBannerUrl" mode="scaleToFill" />
+      <image class="complete-banner" :src="completeBannerUrl" mode="scaleToFill" />
       <view class="complete-stars" aria-label="三颗星">
         <image v-for="star in 3" :key="star" :src="completeStarUrl" mode="aspectFit" />
       </view>
-      <text class="complete-time">用时 <text>{{ formattedTime }}</text></text>
-      <view class="complete-next" @tap="nextLevel">下一关</view>
+      <view class="complete-time" aria-label="本关用时">
+        <image :src="completeHourglassUrl" mode="aspectFit" />
+        <text>{{ formattedTime }}</text>
+      </view>
+      <image class="complete-next tap-image" :src="completeNextUrl" mode="aspectFit" @tap="nextLevel" />
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useGameProgress } from '@/composables/progress';
 import answerRightUrl from './assets/game4_answer_right.png';
 import answerWrongUrl from './assets/game4_answer_wrong.png';
@@ -119,8 +123,10 @@ import impactMarkUrl from './assets/game4_boom1.png';
 import titleUrl from './assets/game4_tit.png';
 import impactRaysUrl from './assets/game4_boom2.png';
 import drum4Url from './assets/game4_drum4.png';
-import completeBannerUrl from '../game06/assets/game6_excise.png';
-import completeStarUrl from '../game06/assets/game6_star.png';
+import completeBannerUrl from './assets/game4_tc.png';
+import completeHourglassUrl from './assets/game4_ld.png';
+import completeNextUrl from './assets/game4_next_step.png';
+import completeStarUrl from './assets/game4_star.png';
 import backgroundMusicUrl from '../game05/audio/background-music.mp3';
 import bananaAudioUrl from './audio/banana.mp3';
 import correctAudioUrl from './audio/correct.mp3';
@@ -188,11 +194,14 @@ const elapsedSeconds = ref(0);
 const studyStartedAt = ref(0);
 const isMusicEnabled = ref(true);
 const isMusicPlaying = ref(false);
+const openingGuidePending = ref(false);
+const musicButtonStyle = ref<Record<string, string>>({});
 
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 let correctVoiceTimer: ReturnType<typeof setTimeout> | null = null;
 let openingGuideTimer: ReturnType<typeof setTimeout> | null = null;
 let openingGuideFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+let initialWordTimer: ReturnType<typeof setTimeout> | null = null;
 let speechTimer: ReturnType<typeof setTimeout> | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 let backgroundMusicAudio: UniApp.InnerAudioContext | null = null;
@@ -207,8 +216,9 @@ const formattedTime = computed(() => {
   const seconds = (elapsedSeconds.value % 60).toString().padStart(2, '0');
   return `${minutes}:${seconds}`;
 });
-const isLocked = computed(() => isGuiding.value || hasAnswered.value || Boolean(feedback.value));
+const isLocked = computed(() => openingGuidePending.value || isGuiding.value || hasAnswered.value || Boolean(feedback.value));
 const instruction = computed(() => {
+  if (openingGuidePending.value) return '点击页面，先听操作提示';
   if (isSpeaking.value) return '认真听，找出对应的单词';
   if (hasAnswered.value) return '答对啦！点击右下角继续';
   return '听一听，点击对应单词的鼓面';
@@ -224,6 +234,10 @@ function buildDrums() {
   }));
 }
 
+function isDrumStruck(drumId: string) {
+  return hitDrumId.value === drumId || wrongDrumId.value === drumId;
+}
+
 function finishOpeningGuide() {
   if (!isGuiding.value) return;
   if (openingGuideFallbackTimer) {
@@ -231,10 +245,24 @@ function finishOpeningGuide() {
     openingGuideFallbackTimer = null;
   }
   isGuiding.value = false;
-  if (currentRound.value === 0 && !isComplete.value) sayWord();
+  isSpeaking.value = false;
+  if (currentRound.value === 0 && !hasAnswered.value && !isComplete.value) {
+    if (initialWordTimer) clearTimeout(initialWordTimer);
+    initialWordTimer = setTimeout(() => {
+      initialWordTimer = null;
+      sayWord();
+    }, 160);
+  }
 }
 
 function playOpeningGuide() {
+  if (!canStartAudio()) {
+    openingGuidePending.value = true;
+    isGuiding.value = false;
+    isSpeaking.value = false;
+    return;
+  }
+  openingGuidePending.value = false;
   isGuiding.value = true;
   isSpeaking.value = true;
   if (speechTimer) {
@@ -252,6 +280,12 @@ function playOpeningGuide() {
   openingGuideAudio.play();
   // Some runtimes do not dispatch ended/error for an autoplay-blocked guide clip.
   openingGuideFallbackTimer = setTimeout(finishOpeningGuide, 4300);
+}
+
+function canStartAudio() {
+  if (typeof navigator === 'undefined') return true;
+  const navigatorWithActivation = navigator as Navigator & { userActivation?: { hasBeenActive: boolean } };
+  return navigatorWithActivation.userActivation?.hasBeenActive ?? true;
 }
 
 function sayWord() {
@@ -337,6 +371,20 @@ function playBackgroundMusic() {
 
 function resumeBackgroundMusic() {
   if (isMusicEnabled.value && !isMusicPlaying.value) playBackgroundMusic();
+}
+
+function resumePageAudio() {
+  if (openingGuidePending.value) playOpeningGuide();
+  resumeBackgroundMusic();
+}
+
+function positionMusicButton() {
+  const uniWithMenuButton = uni as typeof uni & {
+    getMenuButtonBoundingClientRect?: () => { bottom?: number };
+  };
+  const menuButton = uniWithMenuButton.getMenuButtonBoundingClientRect?.();
+  if (!menuButton?.bottom) return;
+  musicButtonStyle.value = { top: `${menuButton.bottom + 12}px` };
 }
 
 function toggleBackgroundMusic() {
@@ -428,9 +476,11 @@ function nextRound() {
 
 function restart() {
   isGuiding.value = false;
+  openingGuidePending.value = false;
   openingGuideAudio?.stop();
   if (openingGuideTimer) clearTimeout(openingGuideTimer);
   if (openingGuideFallbackTimer) clearTimeout(openingGuideFallbackTimer);
+  if (initialWordTimer) clearTimeout(initialWordTimer);
   resetProgress();
   currentRound.value = 0;
   hasAnswered.value = false;
@@ -464,6 +514,7 @@ function vibrate(type: 'light' | 'medium') {
 }
 
 onMounted(() => {
+  nextTick(positionMusicButton);
   studyStartedAt.value = Date.now();
   buildDrums();
   playBackgroundMusic();
@@ -483,8 +534,10 @@ onUnmounted(() => {
   if (correctVoiceTimer) clearTimeout(correctVoiceTimer);
   if (openingGuideTimer) clearTimeout(openingGuideTimer);
   if (openingGuideFallbackTimer) clearTimeout(openingGuideFallbackTimer);
+  if (initialWordTimer) clearTimeout(initialWordTimer);
   if (speechTimer) clearTimeout(speechTimer);
   if (clockTimer) clearInterval(clockTimer);
+  openingGuidePending.value = false;
   isGuiding.value = false;
   openingGuideAudio?.destroy();
   openingGuideAudio = null;
@@ -524,7 +577,7 @@ onUnmounted(() => {
 .music-button {
   position: absolute;
   z-index: 10;
-  top: 64rpx;
+  top: max(150rpx, calc(env(safe-area-inset-top) + 100rpx));
   right: 46rpx;
   display: flex;
   align-items: center;
@@ -752,14 +805,14 @@ onUnmounted(() => {
   animation: burst-pop 0.46s 0.1s cubic-bezier(0.22, 1.15, 0.36, 1) both;
 }
 
-.impact-mark { top: 72rpx; left: 24rpx; width: 70rpx; height: 90rpx; }
+.impact-mark { top: 72rpx; left: 50rpx; width: 70rpx; height: 90rpx; }
 .impact-rays { top: 70rpx; right: 34rpx; width: 62rpx; height: 84rpx; }
 
 .drumstick {
   position: absolute;
   z-index: 9;
-  top: 82rpx;
-  left: 90rpx;
+  top: 44rpx;
+  left: 115rpx;
   width: 126rpx;
   height: 22rpx;
   border: 5rpx solid #b94b27;
@@ -771,22 +824,6 @@ onUnmounted(() => {
   pointer-events: none;
   animation: drumstick-strike 0.48s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
 }
-
-.drum-center-top .drumstick {
-  top: 72rpx;
-  left: 118rpx;
-  animation-name: drumstick-strike-left;
-}
-
-.drum-center-top .impact-mark { top: 72rpx; left: 50rpx; }
-
-.drum-left-bottom .drumstick {
-  top: 82rpx;
-  left: 126rpx;
-  animation-name: drumstick-strike-side;
-}
-
-.drum-left-bottom .impact-mark { left: 56rpx; }
 
 .drumstick::before {
   position: absolute;
@@ -845,82 +882,72 @@ onUnmounted(() => {
   z-index: 40;
   inset: 0;
   overflow: hidden;
-  background: rgba(20, 38, 52, 0.62);
+  background: rgba(17, 39, 50, 0.66);
 }
 
-.complete-trophy {
+.complete-banner {
   position: absolute;
-  top: 8%;
-  left: 50%;
-  z-index: 1;
-  font-size: 170rpx;
-  line-height: 1;
-  text-shadow: 0 8rpx 0 rgba(137, 66, 15, 0.28), 0 0 22rpx rgba(255, 225, 86, 0.78);
-  transform: translateX(-50%);
-}
-
-.complete-ribbon {
-  position: absolute;
-  top: 31%;
   left: 0;
+  top: 18.5%;
   width: 100%;
-  height: 130rpx;
+  height: 25.25%;
 }
 
 .complete-stars {
   position: absolute;
-  top: 44%;
+  top: 50%;
   left: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 18rpx;
-  width: 100%;
+  width: 336rpx;
+  height: 100rpx;
   transform: translateX(-50%);
 }
 
 .complete-stars image {
-  width: 72rpx;
-  height: 70rpx;
-  filter: drop-shadow(0 5rpx 0 rgba(112, 67, 8, 0.28));
+  width: 100rpx;
+  height: 100rpx;
+  animation: star-pop 0.44s cubic-bezier(0.2, 1.18, 0.36, 1) both;
 }
+
+.complete-stars image:nth-child(2) { animation-delay: 90ms; }
+.complete-stars image:nth-child(3) { animation-delay: 180ms; }
 
 .complete-time {
   position: absolute;
-  top: 53%;
+  top: 58%;
   left: 50%;
-  color: #fff;
-  font-size: 38rpx;
-  font-weight: 900;
-  text-shadow: 0 3rpx 0 rgba(171, 89, 13, 0.66);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 134rpx;
   transform: translateX(-50%);
   white-space: nowrap;
 }
 
+.complete-time image {
+  width: 108rpx;
+  height: 134rpx;
+}
+
 .complete-time text {
-  margin-left: 8rpx;
-  color: #ffb625;
-  font-size: 64rpx;
-  letter-spacing: 2rpx;
-  text-shadow: -2rpx -2rpx 0 #fff, 2rpx -2rpx 0 #fff, 2rpx 2rpx 0 #fff, -2rpx 2rpx 0 #fff, 0 4rpx 0 rgba(171, 89, 13, 0.42);
+  margin-left: 22rpx;
+  color: #fff;
+  font-family: Arial, sans-serif;
+  font-size: 90rpx;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: -4rpx -4rpx 0 #e99d00, 4rpx -4rpx 0 #e99d00, 4rpx 4rpx 0 #e99d00, -4rpx 4rpx 0 #e99d00, 0 7rpx 0 #c87700;
 }
 
 .complete-next {
   position: absolute;
-  top: 68%;
+  top: 79%;
   left: 50%;
-  width: 232rpx;
-  height: 82rpx;
-  border: 4rpx solid #fff;
-  border-radius: 12rpx;
-  background: linear-gradient(180deg, #2cebb3 0%, #10c99b 100%);
-  box-shadow: 0 7rpx 0 #079874;
-  color: #fff;
-  font-size: 40rpx;
-  font-weight: 900;
-  line-height: 76rpx;
-  text-align: center;
-  text-shadow: 0 3rpx 0 rgba(5, 116, 89, 0.35);
+  width: 296rpx;
+  height: 124rpx;
   transform: translateX(-50%);
 }
 
@@ -929,27 +956,16 @@ onUnmounted(() => {
 @keyframes drum-shake { 0%, 100% { transform: translateX(0); } 16%, 48% { transform: translateX(-20rpx); } 32%, 64% { transform: translateX(20rpx); } 78% { transform: translateX(-8rpx); } }
 @keyframes burst-pop { 0% { opacity: 0; transform: scale(0.3) rotate(-22deg); } 56% { opacity: 1; transform: scale(1.16) rotate(8deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes drumstick-strike {
-  0% { opacity: 0; transform: translate(32rpx, -52rpx) rotate(-38deg); }
-  46% { opacity: 1; transform: translate(0, 0) rotate(-57deg); }
-  68% { transform: translate(-3rpx, 4rpx) rotate(-53deg); }
-  100% { opacity: 1; transform: translate(0, 0) rotate(-57deg); }
-}
-@keyframes drumstick-strike-left {
   0% { opacity: 0; transform: translate(-36rpx, -48rpx) rotate(142deg); }
   46% { opacity: 1; transform: translate(0, 0) rotate(164deg); }
   68% { transform: translate(3rpx, 4rpx) rotate(160deg); }
   100% { opacity: 1; transform: translate(0, 0) rotate(164deg); }
 }
-@keyframes drumstick-strike-side {
-  0% { opacity: 0; transform: translate(-34rpx, -44rpx) rotate(168deg); }
-  46% { opacity: 1; transform: translate(0, 0) rotate(188deg); }
-  68% { transform: translate(3rpx, 3rpx) rotate(184deg); }
-  100% { opacity: 1; transform: translate(0, 0) rotate(188deg); }
-}
 @keyframes feedback-pop { 0% { opacity: 0; transform: scale(0.38) translateY(34rpx); } 65% { opacity: 1; transform: scale(1.12) translateY(-8rpx); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
 @keyframes wrong-feedback-pop { 0% { opacity: 0; transform: scale(0.52); } 56% { opacity: 1; transform: scale(1.12) rotate(-3deg); } 72% { transform: scale(0.98) rotate(2deg); } 100% { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes feedback-halo { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 100% { opacity: 0.42; transform: translate(-50%, -50%) scale(1); } }
 @keyframes music-spin { to { transform: rotate(360deg); } }
+@keyframes star-pop { 0% { opacity: 0; transform: scale(0.35) translateY(32rpx); } 68% { opacity: 1; transform: scale(1.14) translateY(-6rpx); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
 
 @media (max-height: 1450rpx) {
   .drum-stage { top: 540rpx; transform: scale(0.88); transform-origin: top center; }
