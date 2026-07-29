@@ -1,6 +1,6 @@
 <template>
   <view class="game03 mini-game-screen">
-    <view class="game-stage">
+    <view class="game-stage" @touchstart="resumeInitialGuide" @mousedown="resumeInitialGuide">
       <image class="scene-bg" :src="bgUrl" mode="aspectFill" />
 
       <image class="return-button tap-image" :src="returnUrl" mode="aspectFit" @tap="goBack" />
@@ -8,6 +8,7 @@
       <view
         class="music-button tap-image"
         :class="{ playing: isMusicPlaying, muted: !isMusicEnabled }"
+        :style="musicButtonStyle"
         :aria-label="isMusicEnabled ? '关闭背景音乐' : '开启背景音乐'"
         @tap.stop="toggleBackgroundMusic"
       >
@@ -43,8 +44,10 @@
       </view>
 
       <view class="robot" :class="{ speaking: isRobotSpeaking }">
-        <image :src="robotUrl" mode="aspectFit" />
-        <view v-if="isRobotSpeaking" class="robot-mouth" />
+        <image :src="speakingRobotUrl" mode="aspectFit" />
+        <view v-if="isRobotSpeaking" class="robot-sound-waves" aria-hidden="true">
+          <view v-for="wave in 3" :key="wave" class="robot-sound-wave" :class="`wave-${wave}`" />
+        </view>
       </view>
       <view :key="bubbleVersion" class="speech-bubble" :class="{ 'bubble-speaking': isRobotSpeaking }">
         <image :src="bubbleUrl" mode="aspectFit" />
@@ -88,27 +91,27 @@
       </view>
 
       <view v-if="isComplete" class="complete-layer">
-        <view class="complete-panel">
-          <text class="complete-title">跟读挑战完成！</text>
-          <view class="complete-line">
-            <text>本局用时</text>
-            <text class="complete-value">{{ formattedTime }}</text>
+        <view class="complete-dialog">
+          <image class="complete-main" :src="completeMainUrl" mode="aspectFit" />
+          <view class="complete-stars" aria-label="获得五星">
+            <image
+              v-for="(star, index) in completeStars"
+              :key="index"
+              :class="`complete-star-${index}`"
+              :src="star"
+              mode="aspectFit"
+            />
           </view>
-          <view class="complete-line">
-            <text>星级评分</text>
-            <view class="complete-stars">
-              <text v-for="star in 3" :key="star" :class="{ muted: star > earnedStars }">★</text>
-            </view>
-          </view>
-          <view class="complete-restart" @tap="restart">再玩一次</view>
+          <text class="complete-time">共用 {{ completionTime }}</text>
         </view>
+        <view class="complete-next tap-image" @tap="goToNextGame">下一关</view>
       </view>
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useGameProgress } from '@/composables/progress';
 import bgUrl from './assets/game3_bg.jpg';
 import bubbleUrl from './assets/game3_bubble.gif';
@@ -118,7 +121,11 @@ import playBgUrl from './assets/game3_icon_play_bg.png';
 import playIconUrl from './assets/game3_icon_play.png';
 import recordBgUrl from './assets/game3_icon_Record_bg.png';
 import recordIconUrl from './assets/game3_icon_Record.png';
-import robotUrl from './assets/game3_rabot.png';
+import speakingRobotUrl from './assets/speak.gif';
+import completeMainUrl from './assets/game3_tc_main.png';
+import completeStarBigUrl from './assets/game3_star_big.png';
+import completeStarMiddleUrl from './assets/game3_star_middle.png';
+import completeStarSmallUrl from './assets/game3_star_small.png';
 import progressBgUrl from './assets/progress_bar_bg.png';
 import progressFillUrl from './assets/progress_bar_ing.png';
 import progressPointUrl from './assets/progress_bar_point.png';
@@ -175,10 +182,11 @@ const isRobotSpeaking = ref(false);
 const isGuiding = ref(false);
 const isMusicEnabled = ref(true);
 const isMusicPlaying = ref(false);
+const musicButtonStyle = ref<Record<string, string>>({});
 const isFinalizingRecording = ref(false);
 const canRecord = ref(false);
 const hasPassed = ref(false);
-const bubbleText = ref('单词音频听完啦，请点击录音按钮跟读两次！');
+const bubbleText = ref('');
 const bubbleVersion = ref(0);
 const isComplete = ref(false);
 const elapsedSeconds = ref(0);
@@ -208,23 +216,50 @@ let backgroundMusic: UniApp.InnerAudioContext | null = null;
 let practiceFinalized = false;
 let speechMatched = false;
 let studyStartedAt = 0;
+let openingGuidePending = false;
 
 const currentWord = computed(() => words[currentIndex.value]);
 const progressPercent = computed(() => ((currentIndex.value + 1) / words.length) * 100);
-const formattedTime = computed(() => {
+const completionTime = computed(() => {
   const minutes = Math.floor(elapsedSeconds.value / 60).toString().padStart(2, '0');
   const seconds = (elapsedSeconds.value % 60).toString().padStart(2, '0');
-  return `${minutes}:${seconds}`;
+  return `${Number(minutes)}分${seconds}秒`;
 });
-const earnedStars = computed(() => (completedWords.value === words.length ? 3 : 2));
+const completeStars = [
+  completeStarSmallUrl,
+  completeStarMiddleUrl,
+  completeStarBigUrl,
+  completeStarMiddleUrl,
+  completeStarSmallUrl
+];
 
 let previewPlayCount = 0;
 let isPreviewing = false;
 let previewFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+let bubbleTypewriterTimer: ReturnType<typeof setInterval> | null = null;
 
-function setBubbleText(message: string) {
-  bubbleText.value = message;
+function setBubbleText(message: string, typewrite = isRobotSpeaking.value) {
+  if (bubbleTypewriterTimer) {
+    clearInterval(bubbleTypewriterTimer);
+    bubbleTypewriterTimer = null;
+  }
   bubbleVersion.value += 1;
+  if (!typewrite || !message) {
+    bubbleText.value = message;
+    return;
+  }
+
+  const characters = Array.from(message);
+  let characterIndex = 0;
+  bubbleText.value = '';
+  bubbleTypewriterTimer = setInterval(() => {
+    bubbleText.value += characters[characterIndex] || '';
+    characterIndex += 1;
+    if (characterIndex >= characters.length) {
+      clearInterval(bubbleTypewriterTimer!);
+      bubbleTypewriterTimer = null;
+    }
+  }, 55);
 }
 
 function setBackgroundMusicVolume(volume: number) {
@@ -270,6 +305,23 @@ function toggleBackgroundMusic() {
   backgroundMusic?.pause();
 }
 
+function positionMusicButton() {
+  const uniWithMenuButton = uni as typeof uni & {
+    getMenuButtonBoundingClientRect?: () => { bottom?: number };
+  };
+  const menuButton = uniWithMenuButton.getMenuButtonBoundingClientRect?.();
+  if (!menuButton?.bottom) return;
+  const minimumTop = menuButton.bottom + 18;
+  uni.createSelectorQuery()
+    .select('.progress-count')
+    .boundingClientRect((rect) => {
+      const progressNode = Array.isArray(rect) ? rect[0] : rect;
+      const progressBottom = progressNode?.bottom || 0;
+      musicButtonStyle.value = { top: `${Math.max(minimumTop, progressBottom + 14)}px` };
+    })
+    .exec();
+}
+
 function finishOpeningGuide() {
   if (!isGuiding.value) return;
   isGuiding.value = false;
@@ -298,12 +350,36 @@ function stopOpeningGuide() {
   openingGuideAudio?.stop();
 }
 
+function canStartAudio() {
+  if (typeof navigator === 'undefined') return true;
+  const navigatorWithActivation = navigator as Navigator & { userActivation?: { hasBeenActive: boolean } };
+  return navigatorWithActivation.userActivation?.hasBeenActive ?? true;
+}
+
+function deferOpeningGuide() {
+  openingGuidePending = true;
+  canRecord.value = false;
+  isGuiding.value = false;
+  isRobotSpeaking.value = false;
+  setBubbleText('点击页面，收听操作提示。');
+}
+
+function resumeInitialGuide() {
+  if (!openingGuidePending) return;
+  playOpeningGuide();
+}
+
 function playOpeningGuide() {
+  if (!canStartAudio()) {
+    deferOpeningGuide();
+    return;
+  }
   stopOpeningGuide();
+  openingGuidePending = false;
   canRecord.value = false;
   isGuiding.value = true;
   isRobotSpeaking.value = true;
-  setBubbleText('先听操作提示，再跟着原音练习吧。');
+  setBubbleText('先听操作提示，再自动播放第一个单词原音。');
   setBackgroundMusicVolume(0.04);
   if (!openingGuideAudio) {
     openingGuideAudio = uni.createInnerAudioContext();
@@ -338,7 +414,7 @@ function startWordPreview() {
   canRecord.value = false;
   isRobotSpeaking.value = false;
   setBackgroundMusicVolume(0.04);
-  setBubbleText('正在播放原音，请认真听哦。');
+  setBubbleText('正在播放原音，请认真听哦。', true);
   if (previewFallbackTimer) clearTimeout(previewFallbackTimer);
   previewFallbackTimer = setTimeout(() => {
     if (isPreviewing) finishWordPreview();
@@ -709,18 +785,24 @@ function completePractice() {
   completedWords.value = Math.min(words.length, completedWords.value + 1);
   updateProgress(Math.round((completedWords.value / words.length) * 100), completedWords.value === words.length);
   if (completedWords.value === words.length) {
-    setBubbleText('两次跟读完成。可重新听两遍后补录，或点击右侧箭头完成挑战。');
+    submitLatestRecordings(currentWord.value.word);
+    finishChallenge();
   } else {
     setBubbleText('两次跟读完成。可重新听两遍后补录，或点击右侧箭头继续。');
   }
+}
+
+function finishChallenge() {
+  if (isComplete.value) return;
+  elapsedSeconds.value = Math.max(1, Math.round((Date.now() - studyStartedAt) / 1000));
+  isComplete.value = true;
 }
 
 function nextWord() {
   if (!hasPassed.value || isComplete.value) return;
   submitLatestRecordings(currentWord.value.word);
   if (currentIndex.value >= words.length - 1) {
-    elapsedSeconds.value = Math.max(1, Math.round((Date.now() - studyStartedAt) / 1000));
-    isComplete.value = true;
+    finishChallenge();
     return;
   }
   stopSpeechRecognition();
@@ -779,7 +861,12 @@ function goBack() {
   uni.navigateBack();
 }
 
+function goToNextGame() {
+  uni.redirectTo({ url: '/pages/play/play?id=game-04' });
+}
+
 onMounted(() => {
+  nextTick(positionMusicButton);
   studyStartedAt = Date.now();
   playBackgroundMusic();
   clockTimer = setInterval(() => {
@@ -804,6 +891,7 @@ onUnmounted(() => {
   if (previewTimer) clearTimeout(previewTimer);
   if (openingGuideFallbackTimer) clearTimeout(openingGuideFallbackTimer);
   if (previewFallbackTimer) clearTimeout(previewFallbackTimer);
+  if (bubbleTypewriterTimer) clearInterval(bubbleTypewriterTimer);
   if (clockTimer) clearInterval(clockTimer);
   wordAudio?.destroy();
   wordAudio = null;
@@ -839,8 +927,8 @@ onUnmounted(() => {
 .return-button { position: absolute; z-index: 10; top: 4.9%; left: 6.2%; width: 120rpx; height: 120rpx; }
 .music-button {
   position: absolute;
-  z-index: 10;
-  top: 5.3%;
+  z-index: 40;
+  top: max(8%, calc(env(safe-area-inset-top) + 90rpx));
   right: 6.7%;
   display: flex;
   width: 106rpx;
@@ -910,7 +998,11 @@ onUnmounted(() => {
 .robot { position: absolute; z-index: 5; top: 54.5%; left: 64%; width: 216rpx; height: 318rpx; }
 .robot > image { width: 100%; height: 100%; }
 .robot.speaking { animation: robot-talk 0.48s ease-in-out infinite alternate; }
-.robot-mouth { position: absolute; top: 39%; left: 53%; width: 15rpx; height: 4rpx; border-radius: 50%; background: #111820; transform-origin: center; animation: mouth-talk 0.22s ease-in-out infinite alternate; }
+.robot-sound-waves { position: absolute; z-index: 2; top: 35%; right: 93%; display: flex; height: 46rpx; align-items: center; gap: 5rpx; transform: rotate(-8deg); }
+.robot-sound-wave { width: 7rpx; border: 4rpx solid #239ce3; border-top-color: transparent; border-bottom-color: transparent; border-radius: 50%; opacity: 0.35; animation: sound-wave 0.8s ease-out infinite; }
+.wave-1 { height: 12rpx; animation-delay: 0s; }
+.wave-2 { height: 25rpx; animation-delay: 0.14s; }
+.wave-3 { height: 40rpx; animation-delay: 0.28s; }
 .speech-bubble { position: absolute; z-index: 6; top: 54.2%; left: 18.5%; width: 356rpx; height: 212rpx; }
 .speech-bubble.bubble-speaking { animation: bubble-talk 0.72s ease-in-out infinite alternate; transform-origin: 80% 100%; }
 .speech-bubble image { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -936,13 +1028,14 @@ onUnmounted(() => {
 .saving-label { background: #538fba; animation: status-pop 0.32s ease both; }
 .next-button.disabled { opacity: 0.48; filter: grayscale(0.45); }
 
-.complete-layer { position: absolute; z-index: 30; inset: 0; display: flex; align-items: center; justify-content: center; padding: 48rpx; background: rgba(29, 124, 186, 0.24); }
-.complete-panel { width: min(570rpx, calc(100vw - 80rpx)); padding: 52rpx 40rpx 42rpx; border: 7rpx solid #fff; border-radius: 24rpx; background: #e5fbff; box-shadow: 0 14rpx 0 rgba(31, 128, 184, 0.24); text-align: center; }
-.complete-title { display: block; margin-bottom: 30rpx; color: #1789cb; font-size: 44rpx; font-weight: 900; line-height: 1.2; }
-.complete-line { display: flex; align-items: center; justify-content: space-between; padding: 20rpx 10rpx; border-bottom: 2rpx solid rgba(53, 153, 204, 0.2); color: #3b91be; font-size: 30rpx; font-weight: 700; }
-.complete-value { color: #147bb9; font-size: 38rpx; font-variant-numeric: tabular-nums; }
-.complete-stars { display: flex; gap: 6rpx; color: #f3a42b; font-size: 48rpx; line-height: 1; }.complete-stars .muted { color: #b9d9df; }
-.complete-restart { margin-top: 34rpx; height: 82rpx; border-radius: 41rpx; background: #38a9dd; color: #fff; font-size: 30rpx; font-weight: 800; line-height: 82rpx; box-shadow: 0 6rpx 0 #2383b5; }
+.complete-layer { position: absolute; z-index: 50; inset: 0; background: rgba(17, 37, 40, 0.68); animation: complete-fade-in 0.3s ease both; }
+.complete-dialog { position: absolute; top: 14%; left: 50%; width: min(700rpx, calc(100vw - 44rpx)); aspect-ratio: 750 / 783; transform: translateX(-50%); animation: complete-pop 0.5s cubic-bezier(0.2, 1.25, 0.35, 1) both; }
+.complete-main { position: absolute; inset: 0; width: 100%; height: 100%; }
+.complete-stars { position: absolute; top: 60%; left: 50%; display: flex; width: 78%; align-items: center; justify-content: space-between; transform: translateX(-50%); }
+.complete-stars image { width: 17%; height: auto; animation: complete-star-pop 0.42s ease both; }
+.complete-star-0 { animation-delay: 0.2s !important; }.complete-star-1 { animation-delay: 0.28s !important; }.complete-star-2 { animation-delay: 0.36s !important; }.complete-star-3 { animation-delay: 0.44s !important; }.complete-star-4 { animation-delay: 0.52s !important; }
+.complete-time { position: absolute; top: 75%; left: 0; width: 100%; color: #704022; font-size: 42rpx; font-weight: 800; line-height: 1; text-align: center; }
+.complete-next { position: absolute; top: 78%; left: 50%; width: 320rpx; height: 104rpx; border: 6rpx solid #b8ff51; border-radius: 30rpx; background: #65d900; box-shadow: 0 9rpx 0 #2ba900, 0 12rpx 18rpx rgba(25, 92, 0, 0.3); color: #fff; font-size: 58rpx; font-weight: 900; line-height: 92rpx; text-align: center; text-shadow: 0 4rpx 0 #399200; transform: translateX(-50%); animation: complete-next-pop 0.42s 0.6s ease both; }
 
 @keyframes center-countdown { 0% { opacity: 0; transform: scale(1.42); } 62% { opacity: 1; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
 @keyframes status-pop { from { opacity: 0; transform: translate(-50%, 8rpx) scale(0.8); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
@@ -951,9 +1044,13 @@ onUnmounted(() => {
 @keyframes recording-label-blink { from { opacity: 0.76; } to { opacity: 1; } }
 @keyframes record-ring { 0% { opacity: 0.9; transform: scale(0.92); box-shadow: 0 0 0 0 rgba(239, 67, 67, 0.46); } 70% { opacity: 0.28; transform: scale(1.08); box-shadow: 0 0 0 22rpx rgba(239, 67, 67, 0); } 100% { opacity: 0; transform: scale(1.12); box-shadow: 0 0 0 26rpx rgba(239, 67, 67, 0); } }
 @keyframes robot-talk { from { transform: translateY(0) rotate(-1deg); } to { transform: translateY(-5rpx) rotate(1deg); } }
-@keyframes mouth-talk { from { height: 4rpx; transform: scaleX(0.9); } to { height: 10rpx; transform: scaleX(1.04); } }
+@keyframes sound-wave { 0% { opacity: 0.18; transform: scaleY(0.65); } 55% { opacity: 1; transform: scaleY(1); } 100% { opacity: 0.2; transform: scaleY(0.75); } }
 @keyframes bubble-talk { from { transform: translateY(0) scale(1); } to { transform: translateY(-5rpx) scale(1.015); } }
 @keyframes music-spin { to { transform: rotate(360deg); } }
+@keyframes complete-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes complete-pop { from { opacity: 0; transform: translateX(-50%) scale(0.76); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
+@keyframes complete-star-pop { from { opacity: 0; transform: translateY(22rpx) scale(0.35); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes complete-next-pop { from { opacity: 0; transform: translate(-50%, 24rpx) scale(0.72); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
 
 @media (max-height: 700px) {
   .word-panel { top: 27.5%; }

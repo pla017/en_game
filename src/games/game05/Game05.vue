@@ -800,9 +800,9 @@ onUnmounted(() => {
 
 .music-button {
   position: absolute;
-  top: 2.45%;
+  top: max(8%, calc(env(safe-area-inset-top) + 90rpx));
   right: 5.4%;
-  z-index: 10;
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;
