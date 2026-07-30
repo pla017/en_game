@@ -15,13 +15,14 @@
       <text class="page-title">单词拼图</text>
       <view
         class="music-button"
-        :class="{ playing: isMusicEnabled }"
-        :aria-label="isMusicEnabled ? '关闭背景音乐' : '开启背景音乐'"
-        @tap.stop="toggleBackgroundMusic"
+        :class="{ playing: isMusicPlaying, muted: !isMusicPlaying }"
+        :aria-label="isMusicPlaying ? '关闭背景音乐' : '开启背景音乐'"
+        @touchstart.stop="toggleBackgroundMusic"
+        @mousedown.stop="toggleBackgroundMusic"
       >
         <view class="music-spinner" />
         <text class="music-note">♪</text>
-        <view v-if="!isMusicEnabled" class="music-muted-line" />
+        <view v-if="!isMusicPlaying" class="music-muted-line" />
       </view>
 
       <view class="progress-wrap" aria-label="游戏进度">
@@ -36,6 +37,9 @@
       </view>
 
       <image class="info-card" :src="topCardUrl" mode="aspectFill" />
+      <view class="word-card-grass" aria-hidden="true">
+        <image :src="topBackgroundUrl" mode="scaleToFill" />
+      </view>
       <view class="word-info">
         <text class="word-spelling">{{ currentRoundData.word }}</text>
         <view class="word-underline" />
@@ -43,9 +47,7 @@
         <text class="word-description">{{ currentRoundData.description }}</text>
       </view>
       <view class="robot">
-        <image class="robot-image" :src="robotUrl" mode="aspectFit" />
-        <view class="robot-eyelid robot-eyelid-left" />
-        <view class="robot-eyelid robot-eyelid-right" />
+        <image :key="currentRound" class="robot-image" :src="robotBlinkUrl" mode="aspectFit" />
       </view>
 
       <view class="instruction-pill">
@@ -131,7 +133,7 @@ import progressCircleUrl from './assets/game5_progress_bar_circle.png';
 import progressFillUrl from './assets/game5_progress_bar_ing.png';
 import returnUrl from './assets/game5_return.png';
 import rightAnswerUrl from './assets/game5_answer_right.png';
-import robotUrl from './assets/game5_top_robot.png';
+import robotBlinkUrl from './assets/blink.gif';
 import starUrl from './assets/game5_star.png';
 import topBackgroundUrl from './assets/game5_top_bg.png';
 import topCardUrl from './assets/game5_top.png';
@@ -221,6 +223,7 @@ const dragOffset = ref({ x: 0, y: 0 });
 const isSpeaking = ref(false);
 const isGuiding = ref(false);
 const isMusicEnabled = ref(true);
+const isMusicPlaying = ref(false);
 const completionTime = ref('0分00秒');
 
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -237,7 +240,7 @@ let completionSequenceToken = 0;
 let completionLetterIndex = 0;
 let completionSequenceWord = '';
 let openingGuidePending = false;
-let backgroundMusicStarted = false;
+let lastMusicButtonTouchAt = 0;
 const isPlayingCompletionAudio = ref(false);
 let gameStartedAt = Date.now();
 
@@ -280,8 +283,26 @@ function tileForLetter(letter: string) {
   return allLetters.value.find((tile) => tile.letter === letter) || allLetters.value[0];
 }
 
+function layoutForTile(tile: LetterTile) {
+  const remainingTiles = availableTiles.value;
+  if (remainingTiles.length > 5) return tileLayouts[tile.id];
+
+  const index = remainingTiles.findIndex((item) => item.id === tile.id);
+  const width = 18;
+  const gap = 2.5;
+  const groupWidth = remainingTiles.length * width + Math.max(remainingTiles.length - 1, 0) * gap;
+  const left = (100 - groupWidth) / 2 + index * (width + gap);
+
+  return {
+    left,
+    top: 73.2,
+    width,
+    rotate: (index - (remainingTiles.length - 1) / 2) * 3
+  };
+}
+
 function tileStyle(tile: LetterTile) {
-  const layout = tileLayouts[tile.id];
+  const layout = layoutForTile(tile);
   if (draggingId.value !== tile.id) {
     return {
       left: `${layout.left}%`,
@@ -549,11 +570,6 @@ function playOpeningGuideAfterDelay(delay: number) {
   isGuiding.value = true;
   openingGuideTimer = setTimeout(() => {
     openingGuideTimer = null;
-    if (!canStartAudio()) {
-      isGuiding.value = false;
-      openingGuidePending = true;
-      return;
-    }
     playOpeningGuide();
   }, delay);
 }
@@ -565,7 +581,10 @@ function playOpeningGuide() {
     openingGuideAudio = uni.createInnerAudioContext();
     openingGuideAudio.obeyMuteSwitch = false;
     openingGuideAudio.onEnded(finishOpeningGuide);
-    openingGuideAudio.onError(finishOpeningGuide);
+    openingGuideAudio.onError(() => {
+      isGuiding.value = false;
+      openingGuidePending = true;
+    });
   }
   openingGuideAudio.stop();
   openingGuideAudio.src = openingGuideAudioUrl;
@@ -615,15 +634,18 @@ function createBackgroundMusic() {
   backgroundMusicAudio.loop = true;
   backgroundMusicAudio.volume = 0.18;
   backgroundMusicAudio.src = backgroundMusicUrl;
-  backgroundMusicAudio.onError(() => {
-    backgroundMusicStarted = false;
+  backgroundMusicAudio.onPlay(() => {
+    isMusicPlaying.value = true;
   });
-}
-
-function canStartAudio() {
-  if (typeof navigator === 'undefined') return true;
-  const navigatorWithActivation = navigator as Navigator & { userActivation?: { hasBeenActive: boolean } };
-  return navigatorWithActivation.userActivation?.hasBeenActive ?? true;
+  backgroundMusicAudio.onPause(() => {
+    isMusicPlaying.value = false;
+  });
+  backgroundMusicAudio.onStop(() => {
+    isMusicPlaying.value = false;
+  });
+  backgroundMusicAudio.onError(() => {
+    isMusicPlaying.value = false;
+  });
 }
 
 function hasTransientAudioPermission() {
@@ -635,9 +657,8 @@ function hasTransientAudioPermission() {
 }
 
 function startBackgroundMusic() {
-  if (!isMusicEnabled.value || backgroundMusicStarted || !hasTransientAudioPermission()) return;
+  if (!isMusicEnabled.value) return;
   createBackgroundMusic();
-  backgroundMusicStarted = true;
   backgroundMusicAudio?.play();
 }
 
@@ -646,14 +667,17 @@ function resumeBackgroundMusic(event?: any) {
   if (event?.type !== 'mousedown' && openingGuidePending && hasTransientAudioPermission()) playOpeningGuide();
 }
 
-function toggleBackgroundMusic() {
-  isMusicEnabled.value = !isMusicEnabled.value;
-  if (isMusicEnabled.value) {
-    startBackgroundMusic();
-  } else {
-    backgroundMusicStarted = false;
+function toggleBackgroundMusic(event?: { type?: string }) {
+  const now = Date.now();
+  if (event?.type === 'mousedown' && now - lastMusicButtonTouchAt < 700) return;
+  if (event?.type === 'touchstart') lastMusicButtonTouchAt = now;
+  if (isMusicPlaying.value) {
+    isMusicEnabled.value = false;
     backgroundMusicAudio?.pause();
+    return;
   }
+  isMusicEnabled.value = true;
+  startBackgroundMusic();
 }
 
 function clearFeedbackTimer() {
@@ -719,7 +743,7 @@ onUnmounted(() => {
   completionWordAudio = null;
   backgroundMusicAudio?.destroy();
   backgroundMusicAudio = null;
-  backgroundMusicStarted = false;
+  isMusicPlaying.value = false;
   if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
 });
 </script>
@@ -750,7 +774,8 @@ onUnmounted(() => {
 .stage-background,
 .bottom-background,
 .top-grass,
-.info-card {
+.info-card,
+.word-card-grass {
   position: absolute;
   pointer-events: none;
 }
@@ -800,7 +825,7 @@ onUnmounted(() => {
 
 .music-button {
   position: absolute;
-  top: max(8%, calc(env(safe-area-inset-top) + 90rpx));
+  top: 11.5%;
   right: 5.4%;
   z-index: 40;
   display: flex;
@@ -915,6 +940,23 @@ onUnmounted(() => {
   height: 19.9%;
 }
 
+.word-card-grass {
+  top: 36.2%;
+  left: 0;
+  z-index: 1;
+  width: 100%;
+  height: 4.2%;
+  overflow: hidden;
+}
+
+.word-card-grass image {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 21.6vh;
+}
+
 .word-info {
   position: absolute;
   top: 21.6%;
@@ -966,30 +1008,12 @@ onUnmounted(() => {
   width: 26%;
   height: 18%;
   z-index: 2;
-  animation: robot-float 2.8s ease-in-out infinite;
 }
 
 .robot-image {
   width: 100%;
   height: 100%;
 }
-
-.robot-eyelid {
-  position: absolute;
-  top: 39.2%;
-  width: 12.7%;
-  height: 10.4%;
-  border-bottom: 0.18vh solid #26353b;
-  border-radius: 50%;
-  background: #fff8eb;
-  opacity: 0;
-  transform: scaleY(0);
-  transform-origin: top;
-  animation: robot-blink 4.6s ease-in-out infinite;
-}
-
-.robot-eyelid-left { left: 25.8%; }
-.robot-eyelid-right { left: 59%; }
 
 .instruction-pill {
   position: absolute;
@@ -1078,7 +1102,7 @@ onUnmounted(() => {
 .letter-tile {
   position: absolute;
   aspect-ratio: 1 / 0.92;
-  transition: transform 0.12s ease, opacity 0.16s ease;
+  transition: top 0.18s ease, left 0.18s ease, transform 0.12s ease, opacity 0.16s ease;
 }
 
 .letter-tile image {
@@ -1230,22 +1254,6 @@ onUnmounted(() => {
 @keyframes instruction-breathe {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.025); }
-}
-
-@keyframes robot-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
-}
-
-@keyframes robot-blink {
-  0%, 43%, 47%, 74%, 78%, 100% {
-    opacity: 0;
-    transform: scaleY(0);
-  }
-  44.5%, 45.5%, 75.5%, 76.5% {
-    opacity: 1;
-    transform: scaleY(1);
-  }
 }
 
 .feedback-pop-enter-active,
