@@ -10,8 +10,10 @@
     <view
       class="music-button tap-image"
       :class="{ playing: isMusicPlaying, muted: !isMusicEnabled }"
+      :style="musicButtonStyle"
       :aria-label="isMusicEnabled ? '关闭背景音乐' : '开启背景音乐'"
-      @tap.stop="toggleBackgroundMusic"
+      @touchstart.stop="toggleBackgroundMusic($event)"
+      @mousedown.stop="toggleBackgroundMusic($event)"
     >
       <view class="music-spinner" />
       <text class="music-note">♪</text>
@@ -97,7 +99,6 @@
       <view class="confetti confetti-one">◆</view>
       <view class="confetti confetti-two">◆</view>
       <view class="complete-panel">
-        <image class="complete-banner" :src="completeBannerUrl" mode="scaleToFill" />
         <view class="complete-stars">
           <image v-for="star in 3" :key="star" class="complete-star-art" :src="starUrl" mode="aspectFit" />
         </view>
@@ -109,10 +110,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useGameProgress } from '@/composables/progress';
 import backgroundUrl from './assets/game6_bg.jpg';
-import completeBannerUrl from './assets/game6_excise.png';
 import keyboardUrl from './assets/game6_keyboard.png';
 import listenUrl from './assets/game6_listen.png';
 import mailboxUrl from './assets/game6_main.png';
@@ -204,6 +204,7 @@ const isGuiding = ref(false);
 const isComplete = ref(false);
 const isMusicEnabled = ref(true);
 const isMusicPlaying = ref(false);
+const musicButtonStyle = ref<Record<string, string>>({});
 
 const currentRound = computed(() => rounds[currentIndex.value]);
 const patternLetters = computed(() => currentRound.value.word.split(''));
@@ -213,7 +214,8 @@ const wordRowStyle = computed(() => {
   const gap = Math.max(0.45, Math.min(1.1, 7 / length));
   return {
     '--word-size': `${size}vw`,
-    '--word-gap': `${gap}vw`
+    '--word-gap': `${gap}vw`,
+    '--letter-count': `${length}`
   };
 });
 const progressPercent = computed(() => ((currentIndex.value + 1) / rounds.length) * 100);
@@ -242,6 +244,7 @@ let transitionTimer: ReturnType<typeof setTimeout> | null = null;
 let openingGuideTimer: ReturnType<typeof setTimeout> | null = null;
 let dragMoved = false;
 let openingGuidePending = false;
+let lastMusicButtonTouchAt = 0;
 const dragStart = ref({ x: 0, y: 0 });
 const dragOffset = ref({ x: 0, y: 0 });
 
@@ -374,7 +377,7 @@ function canStartAudio() {
 }
 
 function startBackgroundMusic() {
-  if (!isMusicEnabled.value || !canStartAudio()) return;
+  if (!isMusicEnabled.value) return;
   ensureBackgroundMusic().play();
 }
 
@@ -383,14 +386,29 @@ function resumeBackgroundMusic() {
   if (openingGuidePending) playOpeningGuide();
 }
 
-function toggleBackgroundMusic() {
-  isMusicEnabled.value = !isMusicEnabled.value;
-  if (isMusicEnabled.value) {
+function toggleBackgroundMusic(event?: { type?: string }) {
+  const now = Date.now();
+  if (event?.type === 'mousedown' && now - lastMusicButtonTouchAt < 700) return;
+  if (event?.type === 'touchstart') lastMusicButtonTouchAt = now;
+
+  // Audio state is authoritative here: an autoplay-blocked but enabled track should retry on tap.
+  if (!isMusicPlaying.value) {
+    isMusicEnabled.value = true;
     startBackgroundMusic();
     return;
   }
+  isMusicEnabled.value = false;
   isMusicPlaying.value = false;
   backgroundMusicAudio?.pause();
+}
+
+function positionMusicButton() {
+  const uniWithMenuButton = uni as typeof uni & {
+    getMenuButtonBoundingClientRect?: () => { bottom?: number };
+  };
+  const menuButton = uniWithMenuButton.getMenuButtonBoundingClientRect?.();
+  if (!menuButton?.bottom) return;
+  musicButtonStyle.value = { top: `${menuButton.bottom + 12}px` };
 }
 
 function playLetterPlaceEffect() {
@@ -448,18 +466,29 @@ function playCorrectVoice() {
   correctVoiceAudio.play();
 }
 
-function speakWithSystemVoice(text: string, lang = 'en-US', rate = 0.72) {
+function speakWithSystemVoice(text: string, lang = 'en-US', rate = 0.72, onFinished?: () => void) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
     isSpeaking.value = false;
+    onFinished?.();
     return;
   }
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = lang;
   utterance.rate = rate;
-  utterance.onend = () => { isSpeaking.value = false; };
-  utterance.onerror = () => { isSpeaking.value = false; };
+  utterance.onend = () => {
+    isSpeaking.value = false;
+    onFinished?.();
+  };
+  utterance.onerror = () => {
+    isSpeaking.value = false;
+    onFinished?.();
+  };
   window.speechSynthesis.speak(utterance);
+}
+
+function playOpeningGuideFallback() {
+  speakWithSystemVoice('请先听单词发音，再选择正确字母填入空格。', 'zh-CN', 0.9, finishOpeningGuide);
 }
 
 function finishOpeningGuide() {
@@ -482,7 +511,7 @@ function playOpeningGuide() {
     openingGuideAudio = uni.createInnerAudioContext();
     openingGuideAudio.obeyMuteSwitch = false;
     openingGuideAudio.onEnded(finishOpeningGuide);
-    openingGuideAudio.onError(finishOpeningGuide);
+    openingGuideAudio.onError(playOpeningGuideFallback);
   }
   openingGuideAudio.stop();
   openingGuideAudio.src = openingGuideAudioUrl;
@@ -554,6 +583,7 @@ function vibrate(type: 'light' | 'medium') {
 }
 
 onMounted(() => {
+  nextTick(positionMusicButton);
   startBackgroundMusic();
   playOpeningGuideAfterDelay(450);
 });
@@ -611,9 +641,9 @@ onUnmounted(() => {
 
 .music-button {
   position: absolute;
-  top: 3.4%;
+  top: max(150rpx, calc(env(safe-area-inset-top) + 100rpx));
   right: 5%;
-  z-index: 4;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -716,15 +746,18 @@ onUnmounted(() => {
 .mailbox-stage {
   position: absolute;
   top: 26.4%;
-  left: 15%;
-  width: 70%;
-  height: 27%;
+  left: 50%;
+  // Keep the supplied mailbox art at its native 680:432 ratio across phone aspect ratios.
+  width: min(70%, 53.5vh);
+  aspect-ratio: 680 / 432;
+  height: auto;
   transition: transform 0.22s ease, filter 0.22s ease;
+  transform: translateX(-50%);
 }
 
 .mailbox-stage.mailbox-open {
   filter: brightness(1.06) drop-shadow(0 0 18rpx rgba(255, 234, 97, 0.82));
-  transform: scale(1.02);
+  transform: translateX(-50%) scale(1.02);
 }
 
 .mailbox {
@@ -750,9 +783,9 @@ onUnmounted(() => {
 }
 
 .word-row {
-  display: flex;
+  display: grid;
   align-items: center;
-  justify-content: center;
+  grid-template-columns: repeat(var(--letter-count), minmax(0, 1fr));
   width: 100%;
   max-width: 100%;
   gap: var(--word-gap, 0.8vw);
@@ -761,8 +794,7 @@ onUnmounted(() => {
 }
 
 .word-letter {
-  flex: 0 1 auto;
-  min-width: 0.45em;
+  min-width: 0;
   color: #5c0f18;
   font-size: clamp(20px, var(--word-size, 8vw), 60px);
   font-weight: 900;
@@ -829,10 +861,10 @@ onUnmounted(() => {
 
 .keyboard-stage {
   position: absolute;
-  top: 67.5%;
+  top: 64.5%;
   left: 10%;
   width: 80%;
-  height: 23%;
+  height: 26%;
 }
 
 .keyboard {
@@ -959,20 +991,19 @@ onUnmounted(() => {
 }
 
 .complete-panel {
-  width: 84%;
-  padding: 8% 6% 6%;
+  width: 78%;
+  padding: 26% 6% 8%;
   border: 3px solid rgba(255, 245, 194, 0.94);
-  border-radius: 28rpx;
+  border-radius: 18rpx;
   background: linear-gradient(180deg, #ffd541, #ff9d22);
   box-shadow: 0 12rpx 0 rgba(132, 66, 29, 0.3), 0 0 32rpx rgba(255, 225, 99, 0.5);
   text-align: center;
 }
 
-.complete-banner { width: 100%; height: clamp(72px, 12vw, 110px); }
-.complete-stars { display: flex; justify-content: center; gap: 6%; margin: 6% 0 3%; }
+.complete-stars { display: flex; justify-content: center; gap: 6%; margin: 0 0 5%; }
 .complete-star-art { width: 17%; height: clamp(32px, 8vw, 58px); }
 .complete-copy { display: block; color: #fff; font-size: clamp(18px, 5vw, 30px); font-weight: 900; text-shadow: 0 2rpx 0 #bf641d; }
-.restart-button { width: 52%; margin: 7% auto 0; padding: 3% 0; border: 3px solid #fff; border-radius: 999rpx; background: #ffbd19; color: #fff; font-size: clamp(18px, 5vw, 30px); font-weight: 900; box-shadow: 0 5rpx 0 #cf781c; }
+.restart-button { width: 52%; margin: 8% auto 0; padding: 3% 0; border: 3px solid #fff; border-radius: 999rpx; background: #ffbd19; color: #fff; font-size: clamp(18px, 5vw, 30px); font-weight: 900; }
 .confetti { position: absolute; color: #ff3b76; font-size: 34px; animation: confetti-drop 1.2s ease infinite; }
 .confetti-one { top: 15%; left: 14%; }
 .confetti-two { top: 22%; right: 16%; color: #8d41ff; animation-delay: 180ms; }
