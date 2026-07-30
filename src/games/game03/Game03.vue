@@ -988,8 +988,8 @@ onUnmounted(() => {
 .complete-layer { position: absolute; z-index: 50; inset: 0; background: rgba(17, 37, 40, 0.68); animation: complete-fade-in 0.3s ease both; }
 .complete-dialog { position: absolute; top: 14%; left: 50%; width: min(700rpx, calc(100vw - 44rpx)); aspect-ratio: 750 / 783; transform: translateX(-50%); animation: complete-pop 0.5s cubic-bezier(0.2, 1.25, 0.35, 1) both; }
 .complete-main { position: absolute; inset: 0; width: 100%; height: 100%; }
-.complete-stars { position: absolute; top: 60%; left: 50%; display: flex; width: 78%; align-items: center; justify-content: space-between; transform: translateX(-50%); }
-.complete-stars image { width: 17%; height: auto; animation: complete-star-pop 0.42s ease both; }
+.complete-stars { position: absolute; top: 60%; left: 50%; display: flex; width: 78%; height: 108rpx; align-items: center; justify-content: space-between; transform: translateX(-50%); }
+.complete-stars image { display: block; width: 106rpx; height: 105rpx; flex: 0 0 auto; animation: complete-star-pop 0.42s ease both; }
 .complete-star-0 { animation-delay: 0.2s !important; }.complete-star-1 { animation-delay: 0.28s !important; }.complete-star-2 { animation-delay: 0.36s !important; }.complete-star-3 { animation-delay: 0.44s !important; }.complete-star-4 { animation-delay: 0.52s !important; }
 .complete-time { position: absolute; top: 75%; left: 0; width: 100%; color: #704022; font-size: 42rpx; font-weight: 800; line-height: 1; text-align: center; }
 .complete-next { position: absolute; top: 78%; left: 50%; width: 320rpx; height: 104rpx; border: 6rpx solid #b8ff51; border-radius: 30rpx; background: #65d900; box-shadow: 0 9rpx 0 #2ba900, 0 12rpx 18rpx rgba(25, 92, 0, 0.3); color: #fff; font-size: 58rpx; font-weight: 900; line-height: 92rpx; text-align: center; text-shadow: 0 4rpx 0 #399200; transform: translateX(-50%); animation: complete-next-pop 0.42s 0.6s ease both; }
