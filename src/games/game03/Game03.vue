@@ -8,14 +8,10 @@
       <view
         class="music-button tap-image"
         :class="{ playing: isMusicPlaying, muted: !isMusicEnabled }"
-        :style="musicButtonStyle"
         :aria-label="isMusicEnabled ? '关闭背景音乐' : '开启背景音乐'"
         @tap.stop="toggleBackgroundMusic"
       >
-        <view class="music-disc">
-          <text class="music-note">♪</text>
-          <view class="music-disc-center" />
-        </view>
+        <image class="music-icon" :src="musicIconUrl" mode="aspectFit" />
         <view v-if="!isMusicEnabled" class="music-slash" />
       </view>
 
@@ -43,8 +39,8 @@
         <text class="meaning">{{ currentWord.meaning }}</text>
       </view>
 
-      <view class="robot" :class="{ speaking: isRobotSpeaking }">
-        <image :src="speakingRobotUrl" mode="aspectFit" />
+      <view class="robot">
+        <image :key="currentWord.word" :src="speakingRobotUrl" mode="aspectFit" />
         <view v-if="isRobotSpeaking" class="robot-sound-waves" aria-hidden="true">
           <view v-for="wave in 3" :key="wave" class="robot-sound-wave" :class="`wave-${wave}`" />
         </view>
@@ -111,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useGameProgress } from '@/composables/progress';
 import bgUrl from './assets/game3_bg.jpg';
 import bubbleUrl from './assets/game3_bubble.gif';
@@ -130,6 +126,7 @@ import progressBgUrl from './assets/progress_bar_bg.png';
 import progressFillUrl from './assets/progress_bar_ing.png';
 import progressPointUrl from './assets/progress_bar_point.png';
 import returnUrl from './assets/game3_return.png';
+import musicIconUrl from '../game04/assets/game4_music.png';
 import backgroundMusicUrl from './audio/background-music.mp3';
 import beeAudioUrl from './audio/bee.mp3';
 import cloudAudioUrl from './audio/cloud.mp3';
@@ -182,7 +179,6 @@ const isRobotSpeaking = ref(false);
 const isGuiding = ref(false);
 const isMusicEnabled = ref(true);
 const isMusicPlaying = ref(false);
-const musicButtonStyle = ref<Record<string, string>>({});
 const isFinalizingRecording = ref(false);
 const canRecord = ref(false);
 const hasPassed = ref(false);
@@ -303,23 +299,6 @@ function toggleBackgroundMusic() {
   }
   isMusicPlaying.value = false;
   backgroundMusic?.pause();
-}
-
-function positionMusicButton() {
-  const uniWithMenuButton = uni as typeof uni & {
-    getMenuButtonBoundingClientRect?: () => { bottom?: number };
-  };
-  const menuButton = uniWithMenuButton.getMenuButtonBoundingClientRect?.();
-  if (!menuButton?.bottom) return;
-  const minimumTop = menuButton.bottom + 18;
-  uni.createSelectorQuery()
-    .select('.progress-count')
-    .boundingClientRect((rect) => {
-      const progressNode = Array.isArray(rect) ? rect[0] : rect;
-      const progressBottom = progressNode?.bottom || 0;
-      musicButtonStyle.value = { top: `${Math.max(minimumTop, progressBottom + 14)}px` };
-    })
-    .exec();
 }
 
 function finishOpeningGuide() {
@@ -866,7 +845,6 @@ function goToNextGame() {
 }
 
 onMounted(() => {
-  nextTick(positionMusicButton);
   studyStartedAt = Date.now();
   playBackgroundMusic();
   clockTimer = setInterval(() => {
@@ -928,35 +906,15 @@ onUnmounted(() => {
 .music-button {
   position: absolute;
   z-index: 40;
-  top: max(8%, calc(env(safe-area-inset-top) + 90rpx));
-  right: 6.7%;
-  display: flex;
-  width: 106rpx;
-  height: 106rpx;
-  align-items: center;
-  justify-content: center;
-  border: 7rpx solid rgba(255, 255, 255, 0.96);
-  border-radius: 50%;
-  background: #38a9dd;
-  box-shadow: 0 7rpx 0 #237fba, 0 9rpx 16rpx rgba(25, 121, 184, 0.25);
+  top: 21.2%;
+  right: 8.8%;
+  width: 82rpx;
+  height: 80rpx;
 }
-.music-disc {
-  position: relative;
-  display: flex;
-  width: 76rpx;
-  height: 76rpx;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: #fff;
-  animation: music-spin 3.2s linear infinite;
-  animation-play-state: paused;
-}
-.music-button.playing .music-disc { animation-play-state: running; }
-.music-note { color: #258fc9; font-family: Arial, sans-serif; font-size: 50rpx; font-weight: 900; line-height: 1; transform: translate(-2rpx, -2rpx); }
-.music-disc-center { position: absolute; right: 10rpx; bottom: 10rpx; width: 10rpx; height: 10rpx; border-radius: 50%; background: #f5b72e; }
-.music-slash { position: absolute; width: 78rpx; height: 8rpx; border: 3rpx solid #fff; border-radius: 8rpx; background: #ee5e5e; transform: rotate(-45deg); box-shadow: 0 2rpx 0 rgba(135, 48, 48, 0.24); }
-.music-button.muted { background: #8ab7c9; box-shadow: 0 7rpx 0 #658e9f, 0 9rpx 16rpx rgba(42, 91, 112, 0.2); }
+.music-icon { width: 100%; height: 100%; }
+.music-button.playing .music-icon { animation: music-pulse 1.8s ease-in-out infinite; }
+.music-slash { position: absolute; top: 36rpx; left: 2rpx; width: 78rpx; height: 8rpx; border: 3rpx solid #fff; border-radius: 8rpx; background: #ee5e5e; transform: rotate(-45deg); box-shadow: 0 2rpx 0 rgba(135, 48, 48, 0.24); }
+.music-button.muted .music-icon { filter: grayscale(0.8); }
 .game-title {
   position: absolute;
   z-index: 4;
@@ -997,7 +955,6 @@ onUnmounted(() => {
 
 .robot { position: absolute; z-index: 5; top: 54.5%; left: 64%; width: 216rpx; height: 318rpx; }
 .robot > image { width: 100%; height: 100%; }
-.robot.speaking { animation: robot-talk 0.48s ease-in-out infinite alternate; }
 .robot-sound-waves { position: absolute; z-index: 2; top: 35%; right: 93%; display: flex; height: 46rpx; align-items: center; gap: 5rpx; transform: rotate(-8deg); }
 .robot-sound-wave { width: 7rpx; border: 4rpx solid #239ce3; border-top-color: transparent; border-bottom-color: transparent; border-radius: 50%; opacity: 0.35; animation: sound-wave 0.8s ease-out infinite; }
 .wave-1 { height: 12rpx; animation-delay: 0s; }
@@ -1043,10 +1000,9 @@ onUnmounted(() => {
 @keyframes recording-wash { from { opacity: 0.42; transform: scale(0.92); } to { opacity: 0.82; transform: scale(1.04); } }
 @keyframes recording-label-blink { from { opacity: 0.76; } to { opacity: 1; } }
 @keyframes record-ring { 0% { opacity: 0.9; transform: scale(0.92); box-shadow: 0 0 0 0 rgba(239, 67, 67, 0.46); } 70% { opacity: 0.28; transform: scale(1.08); box-shadow: 0 0 0 22rpx rgba(239, 67, 67, 0); } 100% { opacity: 0; transform: scale(1.12); box-shadow: 0 0 0 26rpx rgba(239, 67, 67, 0); } }
-@keyframes robot-talk { from { transform: translateY(0) rotate(-1deg); } to { transform: translateY(-5rpx) rotate(1deg); } }
 @keyframes sound-wave { 0% { opacity: 0.18; transform: scaleY(0.65); } 55% { opacity: 1; transform: scaleY(1); } 100% { opacity: 0.2; transform: scaleY(0.75); } }
 @keyframes bubble-talk { from { transform: translateY(0) scale(1); } to { transform: translateY(-5rpx) scale(1.015); } }
-@keyframes music-spin { to { transform: rotate(360deg); } }
+@keyframes music-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 @keyframes complete-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes complete-pop { from { opacity: 0; transform: translateX(-50%) scale(0.76); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
 @keyframes complete-star-pop { from { opacity: 0; transform: translateY(22rpx) scale(0.35); } to { opacity: 1; transform: translateY(0) scale(1); } }
