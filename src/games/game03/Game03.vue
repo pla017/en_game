@@ -1016,7 +1016,7 @@ onUnmounted(() => {
 @keyframes music-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 @keyframes complete-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes complete-pop { from { opacity: 0; transform: translateX(-50%) scale(0.76); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
-@keyframes complete-star-pop { from { opacity: 0; transform: translateY(22rpx) scale(0.35); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes complete-star-pop { from { opacity: 1; transform: translateY(22rpx) scale(0.35); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes complete-next-pop { from { opacity: 0; transform: translate(-50%, 24rpx) scale(0.72); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
 
 @media (max-height: 700px) {
