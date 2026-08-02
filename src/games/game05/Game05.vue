@@ -1070,7 +1070,8 @@ onUnmounted(() => {
   top: 48.5%;
   left: 8.6%;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 1.7%;
   width: 82.8%;
   height: 7.3%;
   z-index: 4;
@@ -1229,25 +1230,28 @@ onUnmounted(() => {
 .complete-details {
   position: absolute;
   top: 45.5%;
-  left: 0;
-  width: 100%;
+  left: 7%;
+  width: 86%;
   color: #fff62e;
   font-size: 2.13vh;
   font-weight: 800;
   line-height: 1.2;
-  text-align: center;
+  text-align: left;
   text-shadow: 1px 2px 0 rgba(82, 64, 13, 0.24);
 }
 
 .time-line,
 .stars-line {
-  display: block;
+  display: flex;
+  width: 100%;
+  flex: none;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  white-space: nowrap;
 }
 
 .stars-line {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   gap: 3%;
   margin-top: 2.2%;
 }
