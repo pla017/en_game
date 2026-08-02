@@ -98,13 +98,14 @@
     <view v-if="isComplete" class="complete-layer">
       <view class="confetti confetti-one">◆</view>
       <view class="confetti confetti-two">◆</view>
-      <view class="complete-panel">
+      <view class="complete-dialog">
+        <image class="complete-banner" :src="completeBannerUrl" mode="aspectFit" />
         <view class="complete-stars">
-          <image v-for="star in 3" :key="star" class="complete-star-art" :src="starUrl" mode="aspectFit" />
+          <image v-for="star in rounds.length" :key="star" class="complete-star-art" :src="starUrl" mode="aspectFit" />
         </view>
-        <text class="complete-copy">你已经听写完成 {{ rounds.length }} 个单词</text>
-        <view class="restart-button" @tap="restart">再玩一次</view>
+        <text class="complete-time">闯关用时：{{ completionTime }}</text>
       </view>
+      <image class="complete-next" :src="nextStageUrl" mode="aspectFit" @tap="goToNextGame" />
     </view>
   </view>
 </template>
@@ -113,10 +114,12 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useGameProgress } from '@/composables/progress';
 import backgroundUrl from './assets/game6_bg.jpg';
+import completeBannerUrl from './assets/game6_excise.png';
 import keyboardUrl from './assets/game6_keyboard.png';
 import listenUrl from './assets/game6_listen.png';
 import mailboxUrl from './assets/game6_main.png';
 import nextButtonUrl from './assets/game6_next2.png';
+import nextStageUrl from './assets/game6_next.png';
 import returnUrl from './assets/game6_return.png';
 import rightAnswerUrl from './assets/game6_answer_right.png';
 import starUrl from './assets/game6_star.png';
@@ -204,6 +207,7 @@ const isGuiding = ref(false);
 const isComplete = ref(false);
 const isMusicEnabled = ref(true);
 const isMusicPlaying = ref(false);
+const completionTime = ref('0分00秒');
 const musicButtonStyle = ref<Record<string, string>>({});
 
 const currentRound = computed(() => rounds[currentIndex.value]);
@@ -245,6 +249,7 @@ let openingGuideTimer: ReturnType<typeof setTimeout> | null = null;
 let dragMoved = false;
 let openingGuidePending = false;
 let lastMusicButtonTouchAt = 0;
+let gameStartedAt = Date.now();
 const dragStart = ref({ x: 0, y: 0 });
 const dragOffset = ref({ x: 0, y: 0 });
 
@@ -540,6 +545,7 @@ function advanceRound() {
   correctVoiceAudio?.stop();
   isSpeaking.value = false;
   if (currentIndex.value >= rounds.length - 1) {
+    completionTime.value = formatElapsed(Date.now() - gameStartedAt);
     isComplete.value = true;
     return;
   }
@@ -563,12 +569,25 @@ function restart() {
   correctVoiceAudio?.stop();
   resetProgress();
   currentIndex.value = 0;
+  completionTime.value = '0分00秒';
+  gameStartedAt = Date.now();
   filledLetters.value = [];
   usedTileIds.value = [];
   feedback.value = null;
   isGuiding.value = false;
   isComplete.value = false;
   playOpeningGuideAfterDelay(220);
+}
+
+function formatElapsed(milliseconds: number) {
+  const totalSeconds = Math.max(1, Math.round(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}分${seconds.toString().padStart(2, '0')}秒`;
+}
+
+function goToNextGame() {
+  uni.redirectTo({ url: '/pages/play/play?id=game-07' });
 }
 
 function goBack() {
@@ -583,6 +602,7 @@ function vibrate(type: 'light' | 'medium') {
 }
 
 onMounted(() => {
+  gameStartedAt = Date.now();
   nextTick(positionMusicButton);
   startBackgroundMusic();
   playOpeningGuideAfterDelay(450);
@@ -816,10 +836,10 @@ onUnmounted(() => {
 
 .correct-feedback {
   position: absolute;
-  top: 51%;
+  top: 56%;
   left: 50%;
-  width: 30%;
-  height: 21%;
+  width: 27%;
+  height: 15%;
   z-index: 2;
   pointer-events: none;
   transform: translate(-50%, -50%);
@@ -984,26 +1004,63 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: rgba(31, 27, 54, 0.62);
 }
 
-.complete-panel {
-  width: 78%;
-  padding: 26% 6% 8%;
-  border: 3px solid rgba(255, 245, 194, 0.94);
-  border-radius: 18rpx;
-  background: linear-gradient(180deg, #ffd541, #ff9d22);
-  box-shadow: 0 12rpx 0 rgba(132, 66, 29, 0.3), 0 0 32rpx rgba(255, 225, 99, 0.5);
-  text-align: center;
+.complete-dialog {
+  position: absolute;
+  top: 31%;
+  left: 50%;
+  width: 86%;
+  height: 30%;
+  transform: translateX(-50%);
 }
 
-.complete-stars { display: flex; justify-content: center; gap: 6%; margin: 0 0 5%; }
-.complete-star-art { width: 17%; height: clamp(32px, 8vw, 58px); }
-.complete-copy { display: block; color: #fff; font-size: clamp(18px, 5vw, 30px); font-weight: 900; text-shadow: 0 2rpx 0 #bf641d; }
-.restart-button { width: 52%; margin: 8% auto 0; padding: 3% 0; border: 3px solid #fff; border-radius: 999rpx; background: #ffbd19; color: #fff; font-size: clamp(18px, 5vw, 30px); font-weight: 900; }
+.complete-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 28%;
+}
+
+.complete-stars {
+  position: absolute;
+  top: 39%;
+  left: 0;
+  display: flex;
+  width: 100%;
+  height: 17%;
+  align-items: center;
+  justify-content: center;
+  gap: 2%;
+}
+
+.complete-star-art { width: 12%; height: 100%; }
+
+.complete-time {
+  position: absolute;
+  top: 69%;
+  left: 0;
+  width: 100%;
+  color: #ffd522;
+  font-size: clamp(16px, 4.2vw, 26px);
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 2rpx 0 rgba(113, 56, 20, 0.3);
+}
+
+.complete-next {
+  position: absolute;
+  top: 67%;
+  left: 50%;
+  width: 50%;
+  height: 10%;
+  transform: translateX(-50%);
+  animation: complete-next-pop 0.42s 0.45s ease both;
+}
+
 .confetti { position: absolute; color: #ff3b76; font-size: 34px; animation: confetti-drop 1.2s ease infinite; }
 .confetti-one { top: 15%; left: 14%; }
 .confetti-two { top: 22%; right: 16%; color: #8d41ff; animation-delay: 180ms; }
@@ -1015,4 +1072,5 @@ onUnmounted(() => {
 @keyframes listen-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); filter: brightness(1.1); } }
 @keyframes music-spin { to { transform: rotate(360deg); } }
 @keyframes confetti-drop { 0%, 100% { transform: translateY(-8px) rotate(0); } 50% { transform: translateY(14px) rotate(35deg); } }
+@keyframes complete-next-pop { from { opacity: 0; transform: translateX(-50%) translateY(24px) scale(0.72); } to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } }
 </style>
