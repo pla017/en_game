@@ -40,7 +40,7 @@
       </view>
 
       <view class="robot">
-        <image :key="currentWord.word" :src="speakingRobotUrl" mode="aspectFit" />
+        <image :key="`robot-${robotAnimationVersion}`" :src="robotImageUrl" mode="aspectFit" />
         <view v-if="isRobotSpeaking" class="robot-sound-waves" aria-hidden="true">
           <view v-for="wave in 3" :key="wave" class="robot-sound-wave" :class="`wave-${wave}`" />
         </view>
@@ -176,6 +176,7 @@ const countdown = ref(3);
 const isRecording = ref(false);
 const recordingSecondsLeft = ref(15);
 const isRobotSpeaking = ref(false);
+const robotAnimationVersion = ref(0);
 const isGuiding = ref(false);
 const isMusicEnabled = ref(true);
 const isMusicPlaying = ref(false);
@@ -215,6 +216,10 @@ let studyStartedAt = 0;
 let openingGuidePending = false;
 
 const currentWord = computed(() => words[currentIndex.value]);
+const robotImageUrl = computed(() => {
+  const separator = speakingRobotUrl.includes('?') ? '&' : '?';
+  return `${speakingRobotUrl}${separator}animation=${robotAnimationVersion.value}`;
+});
 const progressPercent = computed(() => ((currentIndex.value + 1) / words.length) * 100);
 const completionTime = computed(() => {
   const minutes = Math.floor(elapsedSeconds.value / 60).toString().padStart(2, '0');
@@ -320,6 +325,11 @@ function finishOpeningGuide() {
   }, 160);
 }
 
+function startRobotSpeaking() {
+  robotAnimationVersion.value += 1;
+  isRobotSpeaking.value = true;
+}
+
 function stopOpeningGuide() {
   if (openingGuideFallbackTimer) {
     clearTimeout(openingGuideFallbackTimer);
@@ -357,7 +367,7 @@ function playOpeningGuide() {
   openingGuidePending = false;
   canRecord.value = false;
   isGuiding.value = true;
-  isRobotSpeaking.value = true;
+  startRobotSpeaking();
   setBubbleText('先听操作提示，再自动播放第一个单词原音。');
   setBackgroundMusicVolume(0.04);
   if (!openingGuideAudio) {
@@ -452,14 +462,14 @@ function playWordAudio(audioUrl: string) {
   }
   wordAudio.stop();
   wordAudio.src = audioUrl;
-  isRobotSpeaking.value = true;
+  startRobotSpeaking();
   wordAudio.play();
 }
 
 function speak(value: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
-  isRobotSpeaking.value = true;
+  startRobotSpeaking();
   const utterance = new SpeechSynthesisUtterance(value.toLowerCase());
   utterance.lang = 'en-US';
   utterance.rate = 0.72;
@@ -974,6 +984,7 @@ onUnmounted(() => {
 .control-button { position: relative; width: 160rpx; height: 160rpx; }
 .control-button > image:first-child { position: absolute; inset: 0; width: 100%; height: 100%; }
 .control-icon { position: absolute; inset: 3%; width: 94%; height: 94%; }
+.record-button .control-icon { transform: translateY(-10rpx); }
 .record-button { transform: translateY(-2rpx); }
 .record-button.preparing { transform: translateY(-6rpx) scale(1.03); }
 .record-button.recording { transform: translateY(-8rpx) scale(1.06); filter: drop-shadow(0 8rpx 12rpx rgba(225, 57, 57, 0.34)); animation: recording-button-pulse 0.9s ease-in-out infinite alternate; }
