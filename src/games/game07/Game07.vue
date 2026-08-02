@@ -67,7 +67,7 @@
       <text class="combo" v-if="combo > 1">{{ combo }} 连击</text>
     </view>
 
-    <view v-if="!isPlaying && !isComplete" class="pause-mask" @tap="togglePause">
+    <view v-if="!isPlaying && hasStarted && !isComplete" class="pause-mask" @tap="togglePause">
       <view class="pause-card">
         <text class="pause-title">游戏暂停</text>
         <text class="pause-copy">点击继续打地鼠</text>
@@ -106,6 +106,7 @@ import returnUrl from './assets/game7_return.png';
 import drumHitAudioUrl from '../game04/audio/drum-hit.mp3';
 import correctAudioUrl from '../game04/audio/correct.mp3';
 import wrongAudioUrl from '../game04/audio/wrong.mp3';
+import backgroundMusicUrl from '../game05/audio/background-music.mp3';
 
 interface Word {
   id: string;
@@ -147,8 +148,10 @@ const { updateProgress, resetProgress } = useGameProgress('game-07');
 const roundIndex = ref(0);
 const score = ref(0);
 const combo = ref(0);
-const isPlaying = ref(true);
+const isPlaying = ref(false);
+const hasStarted = ref(false);
 const soundOn = ref(true);
+const isMusicPlaying = ref(false);
 const isComplete = ref(false);
 const hitHoleId = ref<number | null>(null);
 const wrongHoleId = ref<number | null>(null);
@@ -166,6 +169,8 @@ const effectAudioUrls: Record<EffectName, string> = {
   wrong: wrongAudioUrl
 };
 const effectAudios: Partial<Record<EffectName, UniApp.InnerAudioContext>> = {};
+let backgroundMusicAudio: UniApp.InnerAudioContext | null = null;
+let h5BackgroundMusic: HTMLAudioElement | null = null;
 
 const currentRound = computed(() => rounds[roundIndex.value] || rounds[rounds.length - 1]);
 const promptMode = computed(() => currentRound.value.mode);
@@ -271,14 +276,75 @@ function advanceRound() {
 
 function togglePause() {
   if (isComplete.value) return;
-  isPlaying.value = !isPlaying.value;
+  if (isPlaying.value) {
+    isPlaying.value = false;
+    clearPhaseTimer();
+    clearAdvanceTimer();
+    feedback.value = '';
+    hitHoleId.value = null;
+    wrongHoleId.value = null;
+    hammerSwing.value = false;
+    molePhase.value = 'hidden';
+    h5BackgroundMusic?.pause();
+    backgroundMusicAudio?.pause();
+    return;
+  }
+  hasStarted.value = true;
+  isPlaying.value = true;
+  resumeBackgroundMusic();
+  revealMoles(220);
 }
 
 function toggleSound() {
   soundOn.value = !soundOn.value;
   if (!soundOn.value) {
     Object.values(effectAudios).forEach((audio) => audio?.stop());
+    h5BackgroundMusic?.pause();
+    backgroundMusicAudio?.pause();
+  } else if (isPlaying.value) {
+    startBackgroundMusic();
   }
+}
+
+function createBackgroundMusic() {
+  if (typeof window !== 'undefined') {
+    if (h5BackgroundMusic) return;
+    h5BackgroundMusic = new Audio(backgroundMusicUrl);
+    h5BackgroundMusic.loop = true;
+    h5BackgroundMusic.preload = 'auto';
+    h5BackgroundMusic.volume = 0.18;
+    h5BackgroundMusic.onplay = () => { isMusicPlaying.value = true; };
+    h5BackgroundMusic.onpause = () => { isMusicPlaying.value = false; };
+    h5BackgroundMusic.onended = () => { isMusicPlaying.value = false; };
+    h5BackgroundMusic.onerror = () => { isMusicPlaying.value = false; };
+    return;
+  }
+  if (backgroundMusicAudio) return;
+  backgroundMusicAudio = uni.createInnerAudioContext();
+  backgroundMusicAudio.obeyMuteSwitch = false;
+  backgroundMusicAudio.loop = true;
+  backgroundMusicAudio.volume = 0.18;
+  backgroundMusicAudio.src = backgroundMusicUrl;
+  backgroundMusicAudio.onPlay(() => { isMusicPlaying.value = true; });
+  backgroundMusicAudio.onPause(() => { isMusicPlaying.value = false; });
+  backgroundMusicAudio.onStop(() => { isMusicPlaying.value = false; });
+  backgroundMusicAudio.onError(() => { isMusicPlaying.value = false; });
+}
+
+function startBackgroundMusic() {
+  if (!soundOn.value) return;
+  createBackgroundMusic();
+  if (h5BackgroundMusic) {
+    void h5BackgroundMusic.play().catch(() => {
+      isMusicPlaying.value = false;
+    });
+    return;
+  }
+  backgroundMusicAudio?.play();
+}
+
+function resumeBackgroundMusic() {
+  if (isPlaying.value && soundOn.value) startBackgroundMusic();
 }
 
 function playEffect(effect: EffectName) {
@@ -309,12 +375,12 @@ function restart() {
   score.value = 0;
   combo.value = 0;
   isComplete.value = false;
-  isPlaying.value = true;
+  isPlaying.value = false;
+  hasStarted.value = false;
   feedback.value = '';
   hitHoleId.value = null;
   wrongHoleId.value = null;
   hammerSwing.value = false;
-  revealMoles(450);
 }
 
 function goBack() {
@@ -335,13 +401,16 @@ function positionTopActions() {
 
 onMounted(() => {
   positionTopActions();
-  revealMoles(520);
 });
 
 onUnmounted(() => {
   clearAdvanceTimer();
   clearPhaseTimer();
   Object.values(effectAudios).forEach((audio) => audio?.destroy());
+  h5BackgroundMusic?.pause();
+  h5BackgroundMusic = null;
+  backgroundMusicAudio?.destroy();
+  backgroundMusicAudio = null;
 });
 </script>
 
@@ -529,12 +598,7 @@ onUnmounted(() => {
   transform: rotate(35deg);
 }
 
-.prompt-hint {
-  display: block;
-  color: #a7630d;
-  font-size: 20rpx;
-  font-weight: 700;
-}
+.prompt-hint { display: none; }
 
 .prompt-word {
   display: block;
@@ -759,6 +823,7 @@ onUnmounted(() => {
 }
 
 .score-panel {
+  display: none;
   position: absolute;
   z-index: 10;
   top: 18.1%;
