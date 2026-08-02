@@ -47,7 +47,7 @@
         <text class="word-description">{{ currentRoundData.description }}</text>
       </view>
       <view class="robot">
-        <image :key="currentRound" class="robot-image" :src="robotBlinkUrl" mode="aspectFit" />
+        <image :key="`robot-${robotAnimationVersion}`" class="robot-image" :src="robotImageUrl" mode="aspectFit" />
       </view>
 
       <view class="instruction-pill">
@@ -62,7 +62,7 @@
           :class="{ filled: Boolean(letter), active: index === answerSlots.length - 1 && !letter }"
           @tap="removeLetter(index)"
         >
-          <image :src="letter ? tileForLetter(letter).image : emptySlotUrl" mode="aspectFit" />
+          <image class="answer-slot-frame" :src="emptySlotUrl" mode="aspectFit" />
           <text v-if="letter" class="slot-letter">{{ letter }}</text>
         </view>
       </view>
@@ -221,6 +221,7 @@ const draggingId = ref<number | null>(null);
 const dragStart = ref({ x: 0, y: 0 });
 const dragOffset = ref({ x: 0, y: 0 });
 const isSpeaking = ref(false);
+const robotAnimationVersion = ref(0);
 const isGuiding = ref(false);
 const isMusicEnabled = ref(true);
 const isMusicPlaying = ref(false);
@@ -236,6 +237,7 @@ let letterPlaceAudio: UniApp.InnerAudioContext | null = null;
 let letterSequenceAudio: UniApp.InnerAudioContext | null = null;
 let completionWordAudio: UniApp.InnerAudioContext | null = null;
 let backgroundMusicAudio: UniApp.InnerAudioContext | null = null;
+let h5BackgroundMusic: HTMLAudioElement | null = null;
 let completionSequenceToken = 0;
 let completionLetterIndex = 0;
 let completionSequenceWord = '';
@@ -245,6 +247,10 @@ const isPlayingCompletionAudio = ref(false);
 let gameStartedAt = Date.now();
 
 const currentRoundData = computed(() => rounds[currentRound.value]);
+const robotImageUrl = computed(() => {
+  const separator = robotBlinkUrl.includes('?') ? '&' : '?';
+  return `${robotBlinkUrl}${separator}animation=${robotAnimationVersion.value}`;
+});
 const progressPercent = computed(() => (
   (currentRound.value + (isRoundSolved.value ? 1 : 0)) / rounds.length
 ) * 100);
@@ -278,10 +284,6 @@ const letterAudioUrls: Record<string, string> = {
   u: letterUAudioUrl,
   z: letterZAudioUrl
 };
-
-function tileForLetter(letter: string) {
-  return allLetters.value.find((tile) => tile.letter === letter) || allLetters.value[0];
-}
 
 function layoutForTile(tile: LetterTile) {
   const remainingTiles = availableTiles.value;
@@ -536,6 +538,7 @@ function speakWord() {
 
 function playCurrentWord() {
   const word = currentRoundData.value.word;
+  robotAnimationVersion.value += 1;
   isSpeaking.value = true;
   if (!wordAudio) {
     wordAudio = uni.createInnerAudioContext();
@@ -577,6 +580,7 @@ function playOpeningGuideAfterDelay(delay: number) {
 function playOpeningGuide() {
   openingGuidePending = false;
   isGuiding.value = true;
+  robotAnimationVersion.value += 1;
   if (!openingGuideAudio) {
     openingGuideAudio = uni.createInnerAudioContext();
     openingGuideAudio.obeyMuteSwitch = false;
@@ -628,6 +632,26 @@ function speakAfterDelay(delay: number, allowPlaybackAfterGuide = false) {
 }
 
 function createBackgroundMusic() {
+  if (typeof window !== 'undefined') {
+    if (h5BackgroundMusic) return;
+    h5BackgroundMusic = new Audio(backgroundMusicUrl);
+    h5BackgroundMusic.loop = true;
+    h5BackgroundMusic.preload = 'auto';
+    h5BackgroundMusic.volume = 0.18;
+    h5BackgroundMusic.onplay = () => {
+      isMusicPlaying.value = true;
+    };
+    h5BackgroundMusic.onpause = () => {
+      isMusicPlaying.value = false;
+    };
+    h5BackgroundMusic.onended = () => {
+      isMusicPlaying.value = false;
+    };
+    h5BackgroundMusic.onerror = () => {
+      isMusicPlaying.value = false;
+    };
+    return;
+  }
   if (backgroundMusicAudio) return;
   backgroundMusicAudio = uni.createInnerAudioContext();
   backgroundMusicAudio.obeyMuteSwitch = false;
@@ -659,6 +683,12 @@ function hasTransientAudioPermission() {
 function startBackgroundMusic() {
   if (!isMusicEnabled.value) return;
   createBackgroundMusic();
+  if (h5BackgroundMusic) {
+    void h5BackgroundMusic.play().catch(() => {
+      isMusicPlaying.value = false;
+    });
+    return;
+  }
   backgroundMusicAudio?.play();
 }
 
@@ -673,6 +703,7 @@ function toggleBackgroundMusic(event?: { type?: string }) {
   if (event?.type === 'touchstart') lastMusicButtonTouchAt = now;
   if (isMusicPlaying.value) {
     isMusicEnabled.value = false;
+    h5BackgroundMusic?.pause();
     backgroundMusicAudio?.pause();
     return;
   }
@@ -741,6 +772,8 @@ onUnmounted(() => {
   letterSequenceAudio = null;
   completionWordAudio?.destroy();
   completionWordAudio = null;
+  h5BackgroundMusic?.pause();
+  h5BackgroundMusic = null;
   backgroundMusicAudio?.destroy();
   backgroundMusicAudio = null;
   isMusicPlaying.value = false;
@@ -1056,7 +1089,7 @@ onUnmounted(() => {
 
 .slot-letter {
   position: absolute;
-  top: 9%;
+  top: 50%;
   left: 0;
   width: 100%;
   color: #4f4f4a;
@@ -1065,6 +1098,7 @@ onUnmounted(() => {
   line-height: 1;
   text-align: center;
   text-transform: lowercase;
+  transform: translateY(-50%);
 }
 
 .answer-slot.active image {
