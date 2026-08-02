@@ -363,18 +363,18 @@ onUnmounted(() => {
 
 .card-stage { position: absolute; z-index: 2; top: calc(var(--status-bar-height) + 500rpx); right: 24rpx; left: 24rpx; height: 760rpx; }
 .card-slot { position: absolute; left: 0; display: flex; width: 100%; height: 150rpx; align-items: center; justify-content: center; overflow: visible; pointer-events: none; transform: translateX(var(--slot-shift, 0)); }
-.slot-0 { top: -12rpx; --slot-shift: -170rpx; --card-rotation: -12deg; }
-.slot-1 { top: 42rpx; --slot-shift: 150rpx; --card-rotation: 9deg; }
-.slot-2 { top: 158rpx; --slot-shift: -108rpx; --card-rotation: 3deg; }
-.slot-3 { top: 214rpx; --slot-shift: 124rpx; --card-rotation: -9deg; }
-.slot-4 { top: 318rpx; --slot-shift: -178rpx; --card-rotation: -4deg; }
-.slot-5 { top: 372rpx; --slot-shift: 162rpx; --card-rotation: 11deg; }
-.slot-6 { top: 480rpx; --slot-shift: -130rpx; --card-rotation: 7deg; }
-.slot-7 { top: 534rpx; --slot-shift: 148rpx; --card-rotation: -7deg; }
-.slot-8 { top: 642rpx; --slot-shift: -168rpx; --card-rotation: -10deg; }
-.slot-9 { top: 696rpx; --slot-shift: 132rpx; --card-rotation: 8deg; }
+.slot-0 { top: -12rpx; --slot-shift: -170rpx; --card-max-width: calc(100vw - 388rpx); --card-rotation: -12deg; }
+.slot-1 { top: 42rpx; --slot-shift: 150rpx; --card-max-width: calc(100vw - 348rpx); --card-rotation: 9deg; }
+.slot-2 { top: 158rpx; --slot-shift: -108rpx; --card-max-width: calc(100vw - 264rpx); --card-rotation: 3deg; }
+.slot-3 { top: 214rpx; --slot-shift: 124rpx; --card-max-width: calc(100vw - 296rpx); --card-rotation: -9deg; }
+.slot-4 { top: 318rpx; --slot-shift: -178rpx; --card-max-width: calc(100vw - 404rpx); --card-rotation: -4deg; }
+.slot-5 { top: 372rpx; --slot-shift: 162rpx; --card-max-width: calc(100vw - 372rpx); --card-rotation: 11deg; }
+.slot-6 { top: 480rpx; --slot-shift: -130rpx; --card-max-width: calc(100vw - 308rpx); --card-rotation: 7deg; }
+.slot-7 { top: 534rpx; --slot-shift: 148rpx; --card-max-width: calc(100vw - 344rpx); --card-rotation: -7deg; }
+.slot-8 { top: 642rpx; --slot-shift: -168rpx; --card-max-width: calc(100vw - 384rpx); --card-rotation: -10deg; }
+.slot-9 { top: 696rpx; --slot-shift: 132rpx; --card-max-width: calc(100vw - 312rpx); --card-rotation: 8deg; }
 .word-card-hit { position: relative; z-index: 4; display: inline-flex; min-width: 180rpx; min-height: 170rpx; align-items: center; justify-content: center; padding: 12rpx; pointer-events: auto; touch-action: manipulation; }
-.word-card { position: relative; z-index: 3; display: inline-flex; flex: 0 1 auto; min-width: 124rpx; max-width: 100%; min-height: 120rpx; align-items: center; justify-content: center; padding: 18rpx 24rpx; border: 6rpx solid #fff; border-radius: 16rpx; box-shadow: 0 7rpx 0 rgba(103, 71, 0, 0.18), 0 7rpx 14rpx rgba(103, 71, 0, 0.18); transform: rotate(var(--card-rotation, -3deg)); transition: transform 0.18s ease, filter 0.18s ease, opacity 0.24s ease; }
+.word-card { position: relative; z-index: 3; display: inline-flex; width: fit-content; min-width: 124rpx; max-width: var(--card-max-width, calc(100vw - 96rpx)); min-height: 120rpx; align-items: center; justify-content: center; padding: 18rpx 24rpx; border: 6rpx solid #fff; border-radius: 16rpx; box-shadow: 0 7rpx 0 rgba(103, 71, 0, 0.18), 0 7rpx 14rpx rgba(103, 71, 0, 0.18); transform: rotate(var(--card-rotation, -3deg)); transition: transform 0.18s ease, filter 0.18s ease, opacity 0.24s ease; }
 .card-en { color: #245889; }
 .card-cn { color: #713d90; }
 .palette-blue { background: #a9ddfa; border-color: #fff; }
@@ -382,7 +382,7 @@ onUnmounted(() => {
 .palette-peach { background: #ffdbad; color: #a7442d; }
 .palette-mint { background: #b9efdb; color: #197a67; }
 .palette-yellow { background: #ffe99b; color: #93600f; }
-.card-label { position: relative; z-index: 2; display: block; min-width: 0; max-width: 100%; overflow: visible; color: inherit; font-size: 38rpx; font-weight: 900; line-height: 1.1; text-align: center; white-space: nowrap; }
+.card-label { position: relative; z-index: 2; display: block; min-width: 0; max-width: 100%; overflow-wrap: anywhere; word-break: break-word; color: inherit; font-size: 38rpx; font-weight: 900; line-height: 1.15; text-align: center; white-space: normal; }
 .card-cn .card-label { font-size: 48rpx; }
 .card-label.long-word { font-size: 32rpx; letter-spacing: 0; }
 .card-cn .card-label.long-word { font-size: 36rpx; }
