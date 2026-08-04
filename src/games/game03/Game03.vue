@@ -40,7 +40,14 @@
       </view>
 
       <view class="robot">
-        <image :key="`robot-${robotAnimationVersion}`" :src="robotImageUrl" mode="aspectFit" />
+        <image
+          v-for="(source, index) in robotImageUrls"
+          :key="index"
+          :class="{ active: activeRobotLayer === index }"
+          :src="source"
+          mode="aspectFit"
+          @load="handleRobotImageLoad(index)"
+        />
         <view v-if="isRobotSpeaking" class="robot-sound-waves" aria-hidden="true">
           <view v-for="wave in 3" :key="wave" class="robot-sound-wave" :class="`wave-${wave}`" />
         </view>
@@ -177,6 +184,9 @@ const isRecording = ref(false);
 const recordingSecondsLeft = ref(15);
 const isRobotSpeaking = ref(false);
 const robotAnimationVersion = ref(0);
+const activeRobotLayer = ref(0);
+const pendingRobotLayer = ref<number | null>(null);
+const robotImageUrls = ref([speakingRobotUrl, speakingRobotUrl]);
 const isGuiding = ref(false);
 const isMusicEnabled = ref(true);
 const isMusicPlaying = ref(false);
@@ -216,10 +226,10 @@ let studyStartedAt = 0;
 let openingGuidePending = false;
 
 const currentWord = computed(() => words[currentIndex.value]);
-const robotImageUrl = computed(() => {
+function versionedRobotUrl() {
   const separator = speakingRobotUrl.includes('?') ? '&' : '?';
   return `${speakingRobotUrl}${separator}animation=${robotAnimationVersion.value}`;
-});
+}
 const progressPercent = computed(() => ((currentIndex.value + 1) / words.length) * 100);
 const completionTime = computed(() => {
   const minutes = Math.floor(elapsedSeconds.value / 60).toString().padStart(2, '0');
@@ -327,7 +337,16 @@ function finishOpeningGuide() {
 
 function startRobotSpeaking() {
   robotAnimationVersion.value += 1;
+  const nextLayer = activeRobotLayer.value === 0 ? 1 : 0;
+  pendingRobotLayer.value = nextLayer;
+  robotImageUrls.value[nextLayer] = versionedRobotUrl();
   isRobotSpeaking.value = true;
+}
+
+function handleRobotImageLoad(index: number) {
+  if (pendingRobotLayer.value !== index) return;
+  activeRobotLayer.value = index;
+  pendingRobotLayer.value = null;
 }
 
 function stopOpeningGuide() {
@@ -921,8 +940,8 @@ onUnmounted(() => {
   width: 82rpx;
   height: 80rpx;
 }
-.music-icon { width: 100%; height: 100%; }
-.music-button.playing .music-icon { animation: music-pulse 1.8s ease-in-out infinite; }
+.music-icon { width: 100%; height: 100%; transform-origin: center; }
+.music-button.playing .music-icon { animation: music-spin 2.4s linear infinite; }
 .music-slash { position: absolute; top: 36rpx; left: 2rpx; width: 78rpx; height: 8rpx; border: 3rpx solid #fff; border-radius: 8rpx; background: #ee5e5e; transform: rotate(-45deg); box-shadow: 0 2rpx 0 rgba(135, 48, 48, 0.24); }
 .music-button.muted .music-icon { filter: grayscale(0.8); }
 .game-title {
@@ -964,7 +983,8 @@ onUnmounted(() => {
 .meaning { display: block; margin-top: 30rpx; color: #1687d1; font-size: 54rpx; font-weight: 500; line-height: 1; }
 
 .robot { position: absolute; z-index: 5; top: 54.5%; left: 64%; width: 216rpx; height: 318rpx; }
-.robot > image { width: 100%; height: 100%; }
+.robot > image { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
+.robot > image.active { opacity: 1; }
 .robot-sound-waves { position: absolute; z-index: 2; top: 35%; right: 93%; display: flex; height: 46rpx; align-items: center; gap: 5rpx; transform: rotate(-8deg); }
 .robot-sound-wave { width: 7rpx; border: 4rpx solid #239ce3; border-top-color: transparent; border-bottom-color: transparent; border-radius: 50%; opacity: 0.35; animation: sound-wave 0.8s ease-out infinite; }
 .wave-1 { height: 12rpx; animation-delay: 0s; }
@@ -1013,7 +1033,7 @@ onUnmounted(() => {
 @keyframes record-ring { 0% { opacity: 0.9; transform: scale(0.92); box-shadow: 0 0 0 0 rgba(239, 67, 67, 0.46); } 70% { opacity: 0.28; transform: scale(1.08); box-shadow: 0 0 0 22rpx rgba(239, 67, 67, 0); } 100% { opacity: 0; transform: scale(1.12); box-shadow: 0 0 0 26rpx rgba(239, 67, 67, 0); } }
 @keyframes sound-wave { 0% { opacity: 0.18; transform: scaleY(0.65); } 55% { opacity: 1; transform: scaleY(1); } 100% { opacity: 0.2; transform: scaleY(0.75); } }
 @keyframes bubble-talk { from { transform: translateY(0) scale(1); } to { transform: translateY(-5rpx) scale(1.015); } }
-@keyframes music-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+@keyframes music-spin { to { transform: rotate(360deg); } }
 @keyframes complete-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes complete-pop { from { opacity: 0; transform: translateX(-50%) scale(0.76); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
 @keyframes complete-star-pop { from { opacity: 1; transform: translateY(22rpx) scale(0.35); } to { opacity: 1; transform: translateY(0) scale(1); } }
