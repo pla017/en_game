@@ -1,5 +1,10 @@
 <template>
-  <view class="mole-game mini-game-screen" :class="{ paused: !isPlaying }">
+  <view
+    class="mole-game mini-game-screen"
+    :class="{ paused: !isPlaying }"
+    @touchstart="resumeBackgroundMusic"
+    @mousedown="resumeBackgroundMusic"
+  >
     <image class="scene-background" :src="backgroundUrl" mode="scaleToFill" />
     <image class="grass grass-left" :src="grassUrl" mode="aspectFit" />
 
@@ -7,11 +12,7 @@
       <image class="back-button" :src="returnUrl" mode="aspectFit" @tap="goBack" />
       <text class="game-title">地鼠大闯关</text>
       <view class="top-actions" :style="topActionsStyle">
-        <view class="sound-button" :class="{ muted: !soundOn }" @tap="toggleSound">
-          <image :src="audioIconUrl" mode="aspectFit" />
-          <text v-if="!soundOn" class="muted-mark">/</text>
-        </view>
-        <view class="pause-button" @tap="togglePause">
+        <view class="pause-button" :class="{ starting: !hasStarted }" @tap.stop="togglePause">
           <text>{{ isPlaying ? 'Ⅱ' : '▶' }}</text>
         </view>
       </view>
@@ -55,7 +56,15 @@
     </view>
 
     <image class="robot" :src="robotUrl" mode="aspectFit" />
-    <image class="hammer" :class="{ swinging: hammerSwing }" :src="hammerUrl" mode="aspectFit" />
+    <image class="hammer" :class="{ hidden: hammerSwing }" :src="hammerUrl" mode="aspectFit" />
+    <image
+      v-if="hammerSwing"
+      :key="hammerStrikeVersion"
+      class="hit-hammer"
+      :style="hammerTargetStyle"
+      :src="hammerUrl"
+      mode="aspectFit"
+    />
 
     <view v-if="feedback" class="feedback" :class="feedback">
       <text>{{ feedback === 'correct' ? `答对了！+${lastGain}` : '再想想，继续加油' }}</text>
@@ -98,7 +107,6 @@ import { useGameProgress } from '@/composables/progress';
 import backgroundUrl from './assets/game7_bg.jpg';
 import grassUrl from './assets/game7_grassland01.gif';
 import hammerUrl from './assets/game7_cz.png';
-import audioIconUrl from './assets/game7_audio.png';
 import holeUrl from './assets/未标题-3.png';
 import moleUrl from './assets/未标题-4.png';
 import robotUrl from './assets/未标题5-2.png';
@@ -157,11 +165,14 @@ const hitHoleId = ref<number | null>(null);
 const wrongHoleId = ref<number | null>(null);
 const feedback = ref<'correct' | 'wrong' | ''>('');
 const hammerSwing = ref(false);
+const hammerStrikeVersion = ref(0);
+const hammerTargetStyle = ref<Record<string, string>>({});
 const lastGain = ref(0);
 const molePhase = ref<'hidden' | 'rising' | 'visible' | 'hiding'>('hidden');
 const topActionsStyle = ref<Record<string, string>>({});
 let advanceTimer: ReturnType<typeof setTimeout> | null = null;
 let phaseTimer: ReturnType<typeof setTimeout> | null = null;
+let hammerTimer: ReturnType<typeof setTimeout> | null = null;
 type EffectName = 'drum' | 'correct' | 'wrong';
 const effectAudioUrls: Record<EffectName, string> = {
   drum: drumHitAudioUrl,
@@ -193,7 +204,7 @@ function hitMole(hole: Hole) {
   if (isLocked.value) return;
 
   playEffect('drum');
-  hammerSwing.value = true;
+  triggerHammerStrike(hole);
   if (hole.word.id === currentRound.value.target.id) {
     hitHoleId.value = hole.id;
     combo.value += 1;
@@ -204,7 +215,7 @@ function hitMole(hole: Hole) {
     vibrate('medium');
     updateProgress(score.value, false);
     if (advanceTimer) clearTimeout(advanceTimer);
-    advanceTimer = setTimeout(hideMolesForNextRound, 620);
+    advanceTimer = setTimeout(hideMolesForNextRound, 560);
   } else {
     hitHoleId.value = null;
     combo.value = 0;
@@ -232,6 +243,24 @@ function clearPhaseTimer() {
   }
 }
 
+function clearHammerTimer() {
+  if (hammerTimer) {
+    clearTimeout(hammerTimer);
+    hammerTimer = null;
+  }
+}
+
+function triggerHammerStrike(hole: Hole) {
+  clearHammerTimer();
+  hammerStrikeVersion.value += 1;
+  hammerTargetStyle.value = { left: hole.left, top: hole.top };
+  hammerSwing.value = true;
+  hammerTimer = setTimeout(() => {
+    hammerSwing.value = false;
+    hammerTimer = null;
+  }, 680);
+}
+
 function clearWrongFeedback() {
   clearAdvanceTimer();
   wrongHoleId.value = null;
@@ -247,14 +276,14 @@ function revealMoles(delay = 260) {
     phaseTimer = setTimeout(() => {
       molePhase.value = 'visible';
       phaseTimer = null;
-    }, 620);
+    }, 560);
   }, delay);
 }
 
 function hideMolesForNextRound() {
   clearAdvanceTimer();
   molePhase.value = 'hiding';
-  phaseTimer = setTimeout(advanceRound, 360);
+  phaseTimer = setTimeout(advanceRound, 260);
 }
 
 function advanceRound() {
@@ -271,7 +300,7 @@ function advanceRound() {
   wrongHoleId.value = null;
   feedback.value = '';
   hammerSwing.value = false;
-  revealMoles(180);
+  revealMoles(100);
 }
 
 function togglePause() {
@@ -280,6 +309,7 @@ function togglePause() {
     isPlaying.value = false;
     clearPhaseTimer();
     clearAdvanceTimer();
+    clearHammerTimer();
     feedback.value = '';
     hitHoleId.value = null;
     wrongHoleId.value = null;
@@ -344,7 +374,7 @@ function startBackgroundMusic() {
 }
 
 function resumeBackgroundMusic() {
-  if (isPlaying.value && soundOn.value) startBackgroundMusic();
+  if (soundOn.value) startBackgroundMusic();
 }
 
 function playEffect(effect: EffectName) {
@@ -370,6 +400,7 @@ function vibrate(type: 'light' | 'medium') {
 function restart() {
   clearAdvanceTimer();
   clearPhaseTimer();
+  clearHammerTimer();
   resetProgress();
   roundIndex.value = 0;
   score.value = 0;
@@ -401,11 +432,13 @@ function positionTopActions() {
 
 onMounted(() => {
   positionTopActions();
+  startBackgroundMusic();
 });
 
 onUnmounted(() => {
   clearAdvanceTimer();
   clearPhaseTimer();
+  clearHammerTimer();
   Object.values(effectAudios).forEach((audio) => audio?.destroy());
   h5BackgroundMusic?.pause();
   h5BackgroundMusic = null;
@@ -466,6 +499,10 @@ onUnmounted(() => {
   color: #fff;
   font-size: 27rpx;
   font-weight: 800;
+}
+
+.pause-button.starting {
+  animation: start-button-pulse 1.15s ease-in-out infinite alternate;
 }
 
 .top-actions {
@@ -650,7 +687,7 @@ onUnmounted(() => {
   opacity: 0;
   transform: translateX(-50%) translateY(72%) scale(.9);
   transform-origin: 50% 100%;
-  transition: transform .38s cubic-bezier(.22, .92, .32, 1.18), opacity .2s ease;
+  transition: transform .32s cubic-bezier(.22, .92, .32, 1.18), opacity .2s ease;
 }
 
 .speech-bubble {
@@ -695,10 +732,6 @@ onUnmounted(() => {
   font-size: clamp(9px, 2.5vw, 17px);
 }
 
-.hole-unit.is-hit .mole {
-  transform: translateX(-50%) translateY(12%) scale(.88) rotate(-8deg);
-}
-
 .mole-field.phase-rising .mole,
 .mole-field.phase-visible .mole {
   opacity: 1;
@@ -720,7 +753,12 @@ onUnmounted(() => {
 }
 
 .mole-field.phase-visible .hole-unit.is-hit .mole {
-  transform: translateX(-50%) translateY(12%) scale(.88) rotate(-8deg);
+  animation: mole-hit-correct .56s ease-in forwards;
+}
+
+.mole-field.phase-visible .hole-unit.is-hit .speech-bubble {
+  opacity: 0;
+  transform: translateX(-50%) translateY(10rpx) scale(.88);
 }
 
 .mole-field.phase-hiding .hole-unit .mole,
@@ -771,8 +809,12 @@ onUnmounted(() => {
 .star-c { top: 32%; right: -6%; animation-delay: .12s; }
 
 .wrong-mark {
-  top: -14%;
-  left: 50%;
+  top: -30%;
+  right: auto;
+  bottom: auto;
+  left: 68%;
+  width: 1em;
+  height: 1em;
   color: #ef6a3c;
   font-size: clamp(42px, 12vw, 68px);
   font-weight: 900;
@@ -780,11 +822,11 @@ onUnmounted(() => {
   text-align: center;
   text-shadow: 0 3rpx 0 #fff;
   transform: translateX(-50%);
-  animation: wrong-pop .35s ease-out forwards;
+  animation: wrong-pop .5s ease-out forwards;
 }
 
 .hole-unit.is-wrong .mole {
-  animation: shake .32s ease;
+  animation: mole-wrong .42s ease;
 }
 
 .robot {
@@ -806,10 +848,22 @@ onUnmounted(() => {
   max-width: 145px;
   height: 10%;
   transform-origin: 78% 17%;
+  transition: opacity .12s ease;
 }
 
-.hammer.swinging {
-  animation: hammer-hit .38s ease;
+.hammer.hidden {
+  opacity: 0;
+}
+
+.hit-hammer {
+  position: absolute;
+  z-index: 16;
+  width: 22%;
+  max-width: 132px;
+  height: 12%;
+  pointer-events: none;
+  transform-origin: 78% 17%;
+  animation: hammer-hit .68s cubic-bezier(.2, .9, .35, 1) both;
 }
 
 .grass {
@@ -916,9 +970,22 @@ onUnmounted(() => {
 .stars .muted { color: #d6d1b9; }
 
 @keyframes hammer-hit {
-  0% { transform: rotate(0); }
-  45% { transform: rotate(-28deg) translate(-6%, -7%); }
-  100% { transform: rotate(0); }
+  0% { opacity: .35; transform: translate(-15%, -125%) rotate(-38deg) scale(.78); }
+  12% { opacity: 1; }
+  56% { opacity: 1; transform: translate(-48%, -58%) rotate(18deg) scale(1.04); }
+  85% { opacity: 1; transform: translate(-46%, -62%) rotate(10deg) scale(.98); }
+  100% { opacity: 0; transform: translate(-25%, -105%) rotate(-28deg) scale(.86); }
+}
+
+@keyframes mole-hit-correct {
+  0% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  34% { transform: translateX(-50%) translateY(-8%) scale(1.08) rotate(-5deg); }
+  100% { opacity: .35; transform: translateX(-50%) translateY(74%) scale(.82) rotate(8deg); }
+}
+
+@keyframes start-button-pulse {
+  from { transform: scale(1); filter: brightness(1); }
+  to { transform: scale(1.1); filter: brightness(1.12); }
 }
 
 @keyframes ring-pop {
@@ -935,7 +1002,7 @@ onUnmounted(() => {
 @keyframes wrong-pop {
   0% { opacity: 0; transform: translateX(-50%) scale(.4); }
   45% { opacity: 1; transform: translateX(-50%) scale(1.15); }
-  100% { opacity: 0; transform: translateX(-50%) scale(1); }
+  100% { opacity: 1; transform: translateX(-50%) scale(1); }
 }
 
 @keyframes confetti-float {
@@ -943,10 +1010,11 @@ onUnmounted(() => {
   to { transform: translateY(-16rpx) rotate(12deg) scale(1.06); }
 }
 
-@keyframes shake {
-  0%, 100% { transform: translateX(-50%); }
-  25% { transform: translateX(-56%); }
-  75% { transform: translateX(-44%); }
+@keyframes mole-wrong {
+  0%, 100% { transform: translateX(-50%) translateY(0) rotate(0); }
+  22% { transform: translateX(-58%) translateY(0) rotate(-7deg); }
+  48% { transform: translateX(-42%) translateY(0) rotate(7deg); }
+  74% { transform: translateX(-55%) translateY(0) rotate(-4deg); }
 }
 
 @keyframes feedback-in {
