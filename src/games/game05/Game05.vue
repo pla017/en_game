@@ -47,7 +47,7 @@
         <text class="word-description">{{ currentRoundData.description }}</text>
       </view>
       <view class="robot">
-        <image :key="`robot-${robotAnimationVersion}`" class="robot-image" :src="robotImageUrl" mode="aspectFit" />
+        <image class="robot-image" :src="robotImageUrl" mode="aspectFit" />
       </view>
 
       <view class="instruction-pill">
@@ -134,6 +134,7 @@ import progressFillUrl from './assets/game5_progress_bar_ing.png';
 import returnUrl from './assets/game5_return.png';
 import rightAnswerUrl from './assets/game5_answer_right.png';
 import robotBlinkUrl from './assets/blink.gif';
+import robotIdleUrl from './assets/game5_top_robot.png';
 import starUrl from './assets/game5_star.png';
 import topBackgroundUrl from './assets/game5_top_bg.png';
 import topCardUrl from './assets/game5_top.png';
@@ -214,6 +215,7 @@ const { updateProgress, resetProgress } = useGameProgress('game-05');
 const currentRound = ref(0);
 const answerSlots = ref<Array<string | null>>([]);
 const usedTileIds = ref<number[]>([]);
+const roundTiles = ref<LetterTile[]>([]);
 const feedback = ref<Feedback>(null);
 const isComplete = ref(false);
 const completedRounds = ref(0);
@@ -221,6 +223,7 @@ const draggingId = ref<number | null>(null);
 const dragStart = ref({ x: 0, y: 0 });
 const dragOffset = ref({ x: 0, y: 0 });
 const isSpeaking = ref(false);
+const isRobotAnimating = ref(false);
 const robotAnimationVersion = ref(0);
 const isGuiding = ref(false);
 const isMusicEnabled = ref(true);
@@ -248,6 +251,7 @@ let gameStartedAt = Date.now();
 
 const currentRoundData = computed(() => rounds[currentRound.value]);
 const robotImageUrl = computed(() => {
+  if (!isRobotAnimating.value) return robotIdleUrl;
   const separator = robotBlinkUrl.includes('?') ? '&' : '?';
   return `${robotBlinkUrl}${separator}animation=${robotAnimationVersion.value}`;
 });
@@ -255,10 +259,7 @@ const progressPercent = computed(() => (
   (currentRound.value + (isRoundSolved.value ? 1 : 0)) / rounds.length
 ) * 100);
 const isRoundSolved = computed(() => answerSlots.value.join('') === currentRoundData.value.word);
-const allLetters = computed(() => [
-  ...currentRoundData.value.word.split(''),
-  ...currentRoundData.value.extraLetters
-].map((letter, id) => ({ id, letter, image: tileImages[id] })));
+const allLetters = computed(() => roundTiles.value);
 const availableTiles = computed(() => allLetters.value.filter((tile) => !usedTileIds.value.includes(tile.id)));
 const wordAudioUrls: Record<string, string> = {
   apple: appleAudioUrl,
@@ -286,21 +287,7 @@ const letterAudioUrls: Record<string, string> = {
 };
 
 function layoutForTile(tile: LetterTile) {
-  const remainingTiles = availableTiles.value;
-  if (remainingTiles.length > 5) return tileLayouts[tile.id];
-
-  const index = remainingTiles.findIndex((item) => item.id === tile.id);
-  const width = 18;
-  const gap = 2.5;
-  const groupWidth = remainingTiles.length * width + Math.max(remainingTiles.length - 1, 0) * gap;
-  const left = (100 - groupWidth) / 2 + index * (width + gap);
-
-  return {
-    left,
-    top: 73.2,
-    width,
-    rotate: (index - (remainingTiles.length - 1) / 2) * 3
-  };
+  return tileLayouts[tile.id];
 }
 
 function tileStyle(tile: LetterTile) {
@@ -323,8 +310,37 @@ function tileStyle(tile: LetterTile) {
   };
 }
 
+function createShuffledTiles(round: Round) {
+  const entries = [
+    ...round.word.split('').map((letter) => ({ letter, isAnswer: true })),
+    ...round.extraLetters.map((letter) => ({ letter, isAnswer: false }))
+  ];
+
+  for (let index = entries.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [entries[index], entries[swapIndex]] = [entries[swapIndex], entries[index]];
+  }
+
+  const firstRow = entries.slice(0, 5);
+  if (firstRow.every((entry) => entry.isAnswer) || firstRow.every((entry) => !entry.isAnswer)) {
+    const replacementIndex = entries.findIndex((entry, index) => (
+      index >= 5 && entry.isAnswer !== firstRow[0].isAnswer
+    ));
+    if (replacementIndex >= 5) {
+      [entries[4], entries[replacementIndex]] = [entries[replacementIndex], entries[4]];
+    }
+  }
+
+  return entries.map((entry, id) => ({
+    id,
+    letter: entry.letter,
+    image: tileImages[id]
+  }));
+}
+
 function resetRound() {
   clearCompletionTimer();
+  roundTiles.value = createShuffledTiles(currentRoundData.value);
   answerSlots.value = Array(currentRoundData.value.word.length).fill(null);
   usedTileIds.value = [];
   feedback.value = null;
@@ -539,12 +555,14 @@ function speakWord() {
 function playCurrentWord() {
   const word = currentRoundData.value.word;
   robotAnimationVersion.value += 1;
+  isRobotAnimating.value = true;
   isSpeaking.value = true;
   if (!wordAudio) {
     wordAudio = uni.createInnerAudioContext();
     wordAudio.obeyMuteSwitch = false;
     wordAudio.onEnded(() => {
       isSpeaking.value = false;
+      isRobotAnimating.value = false;
     });
     wordAudio.onError(() => {
       isSpeaking.value = false;
@@ -559,6 +577,7 @@ function playCurrentWord() {
 function finishOpeningGuide() {
   if (!isGuiding.value) return;
   isGuiding.value = false;
+  isRobotAnimating.value = false;
   speakAfterDelay(140, true);
 }
 
@@ -581,12 +600,14 @@ function playOpeningGuide() {
   openingGuidePending = false;
   isGuiding.value = true;
   robotAnimationVersion.value += 1;
+  isRobotAnimating.value = true;
   if (!openingGuideAudio) {
     openingGuideAudio = uni.createInnerAudioContext();
     openingGuideAudio.obeyMuteSwitch = false;
     openingGuideAudio.onEnded(finishOpeningGuide);
     openingGuideAudio.onError(() => {
       isGuiding.value = false;
+      isRobotAnimating.value = false;
       openingGuidePending = true;
     });
   }
@@ -602,18 +623,26 @@ function stopOpeningGuide() {
   }
   openingGuidePending = false;
   isGuiding.value = false;
+  isRobotAnimating.value = false;
   openingGuideAudio?.stop();
 }
 
 function speakWithSystemVoice(word: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
+  isSpeaking.value = true;
+  isRobotAnimating.value = true;
   const utterance = new SpeechSynthesisUtterance(word);
   utterance.lang = 'en-US';
   utterance.rate = 0.72;
   utterance.pitch = 1.05;
   utterance.onend = () => {
     isSpeaking.value = false;
+    isRobotAnimating.value = false;
+  };
+  utterance.onerror = () => {
+    isSpeaking.value = false;
+    isRobotAnimating.value = false;
   };
   window.speechSynthesis.speak(utterance);
 }
@@ -884,12 +913,18 @@ onUnmounted(() => {
   animation: music-spin 2.4s linear infinite;
 }
 
+.music-button.playing .music-note {
+  animation: music-spin 2.4s linear infinite;
+}
+
 .music-note {
+  display: block;
   color: #fff;
   font-size: 3.1vh;
   font-weight: 800;
   line-height: 1;
   text-shadow: 0 0.16vh 0 rgba(146, 78, 14, 0.3);
+  transform-origin: center;
 }
 
 .music-muted-line {
