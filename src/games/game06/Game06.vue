@@ -214,13 +214,12 @@ const currentRound = computed(() => rounds[currentIndex.value]);
 const patternLetters = computed(() => currentRound.value.word.split(''));
 const wordRowStyle = computed(() => {
   const length = currentRound.value.word.length;
-  const size = Math.min(9, 42 / length);
-  const slotWidth = length <= 4 ? 18 : length === 5 ? 15 : 13;
-  const gap = length <= 4 ? 5 : length === 5 ? 3.5 : 2.8;
+  const width = length <= 4 ? 68 : length === 5 ? 82 : 94;
+  const size = length <= 4 ? 7.4 : length === 5 ? 6.6 : 5.8;
   return {
-    '--word-size': `${size}vw`,
-    '--word-gap': `${gap}%`,
-    '--word-slot-width': `${slotWidth}%`
+    width: `${width}%`,
+    fontSize: `clamp(24px, ${size}vw, 46px)`,
+    gridTemplateColumns: `repeat(${length}, minmax(0, 1fr))`
   };
 });
 const progressPercent = computed(() => ((currentIndex.value + 1) / rounds.length) * 100);
@@ -789,43 +788,42 @@ onUnmounted(() => {
 
 .mailbox-copy {
   position: absolute;
-  top: 38%;
+  top: 40%;
   left: 15%;
   width: 70%;
-  height: 45%;
+  height: 42%;
+  overflow: hidden;
   text-align: center;
 }
 
 .meaning {
   display: block;
   color: #5c1a1d;
-  font-size: clamp(22px, 5.8vw, 36px);
+  font-size: clamp(20px, 5.2vw, 34px);
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.1;
 }
 
 .word-row {
-  display: flex;
+  display: grid;
   align-items: center;
   justify-content: center;
-  width: 100%;
   max-width: 100%;
-  gap: var(--word-gap, 0.8vw);
-  margin-top: 2%;
-  overflow: visible;
+  column-gap: 2%;
+  margin: 7% auto 0;
+  overflow: hidden;
 }
 
 .word-letter {
   display: flex;
-  width: var(--word-slot-width, 15%);
-  min-width: var(--word-slot-width, 15%);
+  width: 100%;
+  min-width: 0;
   height: 1.1em;
-  flex: 0 0 var(--word-slot-width, 15%);
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
   color: #5c0f18;
-  font-size: clamp(20px, var(--word-size, 8vw), 60px);
+  font-size: inherit;
   font-weight: 900;
   line-height: 1;
   text-align: center;
