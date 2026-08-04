@@ -215,11 +215,12 @@ const patternLetters = computed(() => currentRound.value.word.split(''));
 const wordRowStyle = computed(() => {
   const length = currentRound.value.word.length;
   const size = Math.min(9, 42 / length);
-  const gap = Math.max(0.45, Math.min(1.1, 7 / length));
+  const slotWidth = length <= 4 ? 18 : length === 5 ? 15 : 13;
+  const gap = length <= 4 ? 5 : length === 5 ? 3.5 : 2.8;
   return {
     '--word-size': `${size}vw`,
-    '--word-gap': `${gap}vw`,
-    '--letter-count': `${length}`
+    '--word-gap': `${gap}%`,
+    '--word-slot-width': `${slotWidth}%`
   };
 });
 const progressPercent = computed(() => ((currentIndex.value + 1) / rounds.length) * 100);
@@ -683,8 +684,9 @@ onUnmounted(() => {
   border-radius: 50%;
 }
 
-.music-button.playing .music-spinner { animation: music-spin 2.4s linear infinite; }
-.music-note { color: #fff; font-size: 3.1vh; font-weight: 800; line-height: 1; text-shadow: 0 0.16vh 0 rgba(146, 78, 14, 0.3); }
+.music-button.playing .music-spinner,
+.music-button.playing .music-note { animation: music-spin 2.4s linear infinite; }
+.music-note { display: block; color: #fff; font-size: 3.1vh; font-weight: 800; line-height: 1; text-shadow: 0 0.16vh 0 rgba(146, 78, 14, 0.3); transform-origin: center; }
 .music-muted-line { position: absolute; width: 72%; height: 0.32vh; border-radius: 1vh; background: #fff; transform: rotate(-45deg); box-shadow: 0 0.12vh 0 rgba(146, 78, 14, 0.25); }
 .music-button.muted { background: #9a9da0; box-shadow: 0 4rpx 0 #74777a, 0 6rpx 12rpx rgba(70, 70, 70, 0.18); }
 
@@ -803,18 +805,25 @@ onUnmounted(() => {
 }
 
 .word-row {
-  display: grid;
+  display: flex;
   align-items: center;
-  grid-template-columns: repeat(var(--letter-count), minmax(0, 1fr));
+  justify-content: center;
   width: 100%;
   max-width: 100%;
   gap: var(--word-gap, 0.8vw);
   margin-top: 2%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .word-letter {
-  min-width: 0;
+  display: flex;
+  width: var(--word-slot-width, 15%);
+  min-width: var(--word-slot-width, 15%);
+  height: 1.1em;
+  flex: 0 0 var(--word-slot-width, 15%);
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   color: #5c0f18;
   font-size: clamp(20px, var(--word-size, 8vw), 60px);
   font-weight: 900;
@@ -824,7 +833,6 @@ onUnmounted(() => {
 }
 
 .word-letter.blank {
-  min-width: 0.6em;
   border-bottom: 3px solid #5c0f18;
   color: transparent;
 }
