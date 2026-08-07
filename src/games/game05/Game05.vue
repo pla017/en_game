@@ -518,6 +518,7 @@ function playCompletionAudioSequence(word: string) {
   completionSequenceWord = word;
   isPlayingCompletionAudio.value = true;
   isSpeaking.value = true;
+  startRobotAnimation();
   wordAudio?.stop();
 
   // H5 blocks synthetic/non-gesture playback; keep the state machine moving.
