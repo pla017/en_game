@@ -47,7 +47,18 @@
         <text class="word-description">{{ currentRoundData.description }}</text>
       </view>
       <view class="robot">
-        <image class="robot-image" :src="robotImageUrl" mode="aspectFit" />
+        <view
+          class="robot-image robot-sprite"
+          :class="{ visible: isRobotAnimating }"
+          :style="{ backgroundImage: `url(${robotSpriteUrl})` }"
+          aria-hidden="true"
+        />
+        <image
+          class="robot-image robot-freeze"
+          :class="{ visible: !isRobotAnimating }"
+          :src="robotFreezeImageUrl"
+          mode="aspectFit"
+        />
       </view>
 
       <view class="instruction-pill">
@@ -133,9 +144,9 @@ import progressCircleUrl from './assets/game5_progress_bar_circle.png';
 import progressFillUrl from './assets/game5_progress_bar_ing.png';
 import returnUrl from './assets/game5_return.png';
 import rightAnswerUrl from './assets/game5_answer_right.png';
-import robotGifUrl from './assets/blink.gif';
 import robotIdleUrl from './assets/game5_top_robot.png';
 import robotLastFrameUrl from './assets/blink-last.png';
+import robotSpriteUrl from './assets/robot-blink-sprite.png';
 import starUrl from './assets/game5_star.png';
 import topBackgroundUrl from './assets/game5_top_bg.png';
 import topCardUrl from './assets/game5_top.png';
@@ -225,7 +236,6 @@ const dragStart = ref({ x: 0, y: 0 });
 const dragOffset = ref({ x: 0, y: 0 });
 const isSpeaking = ref(false);
 const isRobotAnimating = ref(false);
-const robotAnimationVersion = ref(0);
 const robotHasPlayed = ref(false);
 const isGuiding = ref(false);
 const isMusicEnabled = ref(true);
@@ -254,13 +264,7 @@ let gameStartedAt = Date.now();
 
 const currentRoundData = computed(() => rounds[currentRound.value]);
 const ROBOT_GIF_DURATION = 3070;
-const robotImageUrl = computed(() => {
-  if (isRobotAnimating.value) {
-    const separator = robotGifUrl.includes('?') ? '&' : '?';
-    return `${robotGifUrl}${separator}animation=${robotAnimationVersion.value}`;
-  }
-  return robotHasPlayed.value ? robotLastFrameUrl : robotIdleUrl;
-});
+const robotFreezeImageUrl = computed(() => robotHasPlayed.value ? robotLastFrameUrl : robotIdleUrl);
 const progressPercent = computed(() => (
   (currentRound.value + (isRoundSolved.value ? 1 : 0)) / rounds.length
 ) * 100);
@@ -561,7 +565,6 @@ function speakWord() {
 
 function startRobotAnimation() {
   if (robotAnimationTimer) clearTimeout(robotAnimationTimer);
-  robotAnimationVersion.value += 1;
   robotHasPlayed.value = true;
   isRobotAnimating.value = true;
   robotAnimationTimer = setTimeout(() => {
@@ -1101,8 +1104,26 @@ onUnmounted(() => {
 }
 
 .robot-image {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  opacity: 0;
+  transition: opacity 0.08s ease;
+}
+
+.robot-image.visible {
+  opacity: 1;
+}
+
+.robot-sprite {
+  background-repeat: no-repeat;
+  background-position: center top;
+  background-size: 100% 4300%;
+}
+
+.robot-sprite.visible {
+  animation: robot-blink 3.07s steps(42, end) both;
 }
 
 .instruction-pill {
@@ -1333,6 +1354,11 @@ onUnmounted(() => {
 
 @keyframes music-spin {
   to { transform: rotate(360deg); }
+}
+
+@keyframes robot-blink {
+  from { background-position: center top; }
+  to { background-position: center bottom; }
 }
 
 @keyframes tile-bob {
