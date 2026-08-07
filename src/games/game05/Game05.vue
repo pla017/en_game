@@ -604,7 +604,6 @@ function playCurrentWord() {
 function finishOpeningGuide() {
   if (!isGuiding.value) return;
   isGuiding.value = false;
-  speakAfterDelay(140, true);
 }
 
 function playOpeningGuideAfterDelay(delay: number) {
