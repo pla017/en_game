@@ -11,7 +11,7 @@
       <image class="top-grass" :src="topGrassUrl" mode="aspectFill" />
       <image class="bottom-background" :src="bottomBackgroundUrl" mode="aspectFill" />
 
-      <image class="back-button" :src="returnUrl" mode="aspectFit" @tap="goBack" />
+      <image class="back-button" :src="returnUrl" mode="aspectFit" @tap.stop="goBack" />
       <text class="page-title">单词拼图</text>
       <view
         class="music-button"
@@ -869,7 +869,7 @@ onUnmounted(() => {
   left: 5.4%;
   width: 10.6%;
   height: 5.1%;
-  z-index: 3;
+  z-index: 50;
 }
 
 .page-title {
