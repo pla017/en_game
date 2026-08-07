@@ -1109,7 +1109,6 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   opacity: 0;
-  transition: opacity 0.08s ease;
 }
 
 .robot-image.visible {
