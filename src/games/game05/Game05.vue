@@ -133,8 +133,9 @@ import progressCircleUrl from './assets/game5_progress_bar_circle.png';
 import progressFillUrl from './assets/game5_progress_bar_ing.png';
 import returnUrl from './assets/game5_return.png';
 import rightAnswerUrl from './assets/game5_answer_right.png';
-import robotBlinkUrl from './assets/blink.gif';
+import robotGifUrl from './assets/blink.gif';
 import robotIdleUrl from './assets/game5_top_robot.png';
+import robotLastFrameUrl from './assets/blink-last.png';
 import starUrl from './assets/game5_star.png';
 import topBackgroundUrl from './assets/game5_top_bg.png';
 import topCardUrl from './assets/game5_top.png';
@@ -225,6 +226,7 @@ const dragOffset = ref({ x: 0, y: 0 });
 const isSpeaking = ref(false);
 const isRobotAnimating = ref(false);
 const robotAnimationVersion = ref(0);
+const robotHasPlayed = ref(false);
 const isGuiding = ref(false);
 const isMusicEnabled = ref(true);
 const isMusicPlaying = ref(false);
@@ -233,6 +235,7 @@ const completionTime = ref('0分00秒');
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 let nextTimer: ReturnType<typeof setTimeout> | null = null;
 let openingGuideTimer: ReturnType<typeof setTimeout> | null = null;
+let robotAnimationTimer: ReturnType<typeof setTimeout> | null = null;
 let completionTimer: ReturnType<typeof setTimeout> | null = null;
 let wordAudio: UniApp.InnerAudioContext | null = null;
 let openingGuideAudio: UniApp.InnerAudioContext | null = null;
@@ -250,10 +253,13 @@ const isPlayingCompletionAudio = ref(false);
 let gameStartedAt = Date.now();
 
 const currentRoundData = computed(() => rounds[currentRound.value]);
+const ROBOT_GIF_DURATION = 3070;
 const robotImageUrl = computed(() => {
-  if (!isRobotAnimating.value) return robotIdleUrl;
-  const separator = robotBlinkUrl.includes('?') ? '&' : '?';
-  return `${robotBlinkUrl}${separator}animation=${robotAnimationVersion.value}`;
+  if (isRobotAnimating.value) {
+    const separator = robotGifUrl.includes('?') ? '&' : '?';
+    return `${robotGifUrl}${separator}animation=${robotAnimationVersion.value}`;
+  }
+  return robotHasPlayed.value ? robotLastFrameUrl : robotIdleUrl;
 });
 const progressPercent = computed(() => (
   (currentRound.value + (isRoundSolved.value ? 1 : 0)) / rounds.length
@@ -552,17 +558,34 @@ function speakWord() {
   playCurrentWord();
 }
 
+function startRobotAnimation() {
+  if (robotAnimationTimer) clearTimeout(robotAnimationTimer);
+  robotAnimationVersion.value += 1;
+  robotHasPlayed.value = true;
+  isRobotAnimating.value = true;
+  robotAnimationTimer = setTimeout(() => {
+    robotAnimationTimer = null;
+    isRobotAnimating.value = false;
+  }, ROBOT_GIF_DURATION);
+}
+
+function stopRobotAnimation() {
+  if (robotAnimationTimer) {
+    clearTimeout(robotAnimationTimer);
+    robotAnimationTimer = null;
+  }
+  isRobotAnimating.value = false;
+}
+
 function playCurrentWord() {
   const word = currentRoundData.value.word;
-  robotAnimationVersion.value += 1;
-  isRobotAnimating.value = true;
+  startRobotAnimation();
   isSpeaking.value = true;
   if (!wordAudio) {
     wordAudio = uni.createInnerAudioContext();
     wordAudio.obeyMuteSwitch = false;
     wordAudio.onEnded(() => {
       isSpeaking.value = false;
-      isRobotAnimating.value = false;
     });
     wordAudio.onError(() => {
       isSpeaking.value = false;
@@ -577,7 +600,6 @@ function playCurrentWord() {
 function finishOpeningGuide() {
   if (!isGuiding.value) return;
   isGuiding.value = false;
-  isRobotAnimating.value = false;
   speakAfterDelay(140, true);
 }
 
@@ -599,15 +621,14 @@ function playOpeningGuideAfterDelay(delay: number) {
 function playOpeningGuide() {
   openingGuidePending = false;
   isGuiding.value = true;
-  robotAnimationVersion.value += 1;
-  isRobotAnimating.value = true;
+  startRobotAnimation();
   if (!openingGuideAudio) {
     openingGuideAudio = uni.createInnerAudioContext();
     openingGuideAudio.obeyMuteSwitch = false;
     openingGuideAudio.onEnded(finishOpeningGuide);
     openingGuideAudio.onError(() => {
       isGuiding.value = false;
-      isRobotAnimating.value = false;
+      stopRobotAnimation();
       openingGuidePending = true;
     });
   }
@@ -623,7 +644,7 @@ function stopOpeningGuide() {
   }
   openingGuidePending = false;
   isGuiding.value = false;
-  isRobotAnimating.value = false;
+  stopRobotAnimation();
   openingGuideAudio?.stop();
 }
 
@@ -631,18 +652,16 @@ function speakWithSystemVoice(word: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
   isSpeaking.value = true;
-  isRobotAnimating.value = true;
+  startRobotAnimation();
   const utterance = new SpeechSynthesisUtterance(word);
   utterance.lang = 'en-US';
   utterance.rate = 0.72;
   utterance.pitch = 1.05;
   utterance.onend = () => {
     isSpeaking.value = false;
-    isRobotAnimating.value = false;
   };
   utterance.onerror = () => {
     isSpeaking.value = false;
-    isRobotAnimating.value = false;
   };
   window.speechSynthesis.speak(utterance);
 }
@@ -769,6 +788,7 @@ function restart() {
   currentRound.value = 0;
   isComplete.value = false;
   completedRounds.value = 0;
+  robotHasPlayed.value = false;
   gameStartedAt = Date.now();
   resetRound();
   playOpeningGuideAfterDelay(360);
@@ -782,13 +802,14 @@ onMounted(() => {
   gameStartedAt = Date.now();
   resetRound();
   startBackgroundMusic();
-  playOpeningGuideAfterDelay(520);
+  playOpeningGuide();
 });
 
 onUnmounted(() => {
   clearFeedbackTimer();
   clearCompletionTimer();
   stopOpeningGuide();
+  stopRobotAnimation();
   stopCompletionAudioSequence();
   if (nextTimer) clearTimeout(nextTimer);
   wordAudio?.destroy();
