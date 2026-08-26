@@ -11,7 +11,7 @@
       <image class="top-grass" :src="topGrassUrl" mode="aspectFill" />
       <image class="bottom-background" :src="bottomBackgroundUrl" mode="aspectFill" />
 
-      <image class="back-button" :src="returnUrl" mode="aspectFit" @tap="goBack" />
+      <image class="back-button" :src="returnUrl" mode="aspectFit" @tap.stop="goBack" />
       <text class="page-title">单词拼图</text>
       <view
         class="music-button"
@@ -47,7 +47,18 @@
         <text class="word-description">{{ currentRoundData.description }}</text>
       </view>
       <view class="robot">
-        <image class="robot-image" :src="robotImageUrl" mode="aspectFit" />
+        <view
+          class="robot-image robot-sprite"
+          :class="{ visible: isRobotAnimating }"
+          :style="{ backgroundImage: `url(${robotSpriteUrl})` }"
+          aria-hidden="true"
+        />
+        <image
+          class="robot-image robot-freeze"
+          :class="{ visible: !isRobotAnimating }"
+          :src="robotFreezeImageUrl"
+          mode="aspectFit"
+        />
       </view>
 
       <view class="instruction-pill">
@@ -133,8 +144,9 @@ import progressCircleUrl from './assets/game5_progress_bar_circle.png';
 import progressFillUrl from './assets/game5_progress_bar_ing.png';
 import returnUrl from './assets/game5_return.png';
 import rightAnswerUrl from './assets/game5_answer_right.png';
-import robotBlinkUrl from './assets/blink.gif';
 import robotIdleUrl from './assets/game5_top_robot.png';
+import robotLastFrameUrl from './assets/blink-last.png';
+import robotSpriteUrl from './assets/robot-blink-sprite.png';
 import starUrl from './assets/game5_star.png';
 import topBackgroundUrl from './assets/game5_top_bg.png';
 import topCardUrl from './assets/game5_top.png';
@@ -224,7 +236,7 @@ const dragStart = ref({ x: 0, y: 0 });
 const dragOffset = ref({ x: 0, y: 0 });
 const isSpeaking = ref(false);
 const isRobotAnimating = ref(false);
-const robotAnimationVersion = ref(0);
+const robotHasPlayed = ref(false);
 const isGuiding = ref(false);
 const isMusicEnabled = ref(true);
 const isMusicPlaying = ref(false);
@@ -233,6 +245,7 @@ const completionTime = ref('0分00秒');
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 let nextTimer: ReturnType<typeof setTimeout> | null = null;
 let openingGuideTimer: ReturnType<typeof setTimeout> | null = null;
+let robotAnimationTimer: ReturnType<typeof setTimeout> | null = null;
 let completionTimer: ReturnType<typeof setTimeout> | null = null;
 let wordAudio: UniApp.InnerAudioContext | null = null;
 let openingGuideAudio: UniApp.InnerAudioContext | null = null;
@@ -250,11 +263,8 @@ const isPlayingCompletionAudio = ref(false);
 let gameStartedAt = Date.now();
 
 const currentRoundData = computed(() => rounds[currentRound.value]);
-const robotImageUrl = computed(() => {
-  if (!isRobotAnimating.value) return robotIdleUrl;
-  const separator = robotBlinkUrl.includes('?') ? '&' : '?';
-  return `${robotBlinkUrl}${separator}animation=${robotAnimationVersion.value}`;
-});
+const ROBOT_GIF_DURATION = 3070;
+const robotFreezeImageUrl = computed(() => robotHasPlayed.value ? robotLastFrameUrl : robotIdleUrl);
 const progressPercent = computed(() => (
   (currentRound.value + (isRoundSolved.value ? 1 : 0)) / rounds.length
 ) * 100);
@@ -512,6 +522,7 @@ function playCompletionAudioSequence(word: string) {
   completionSequenceWord = word;
   isPlayingCompletionAudio.value = true;
   isSpeaking.value = true;
+  startRobotAnimation();
   wordAudio?.stop();
 
   // H5 blocks synthetic/non-gesture playback; keep the state machine moving.
@@ -552,17 +563,33 @@ function speakWord() {
   playCurrentWord();
 }
 
+function startRobotAnimation() {
+  if (robotAnimationTimer) clearTimeout(robotAnimationTimer);
+  robotHasPlayed.value = true;
+  isRobotAnimating.value = true;
+  robotAnimationTimer = setTimeout(() => {
+    robotAnimationTimer = null;
+    isRobotAnimating.value = false;
+  }, ROBOT_GIF_DURATION);
+}
+
+function stopRobotAnimation() {
+  if (robotAnimationTimer) {
+    clearTimeout(robotAnimationTimer);
+    robotAnimationTimer = null;
+  }
+  isRobotAnimating.value = false;
+}
+
 function playCurrentWord() {
   const word = currentRoundData.value.word;
-  robotAnimationVersion.value += 1;
-  isRobotAnimating.value = true;
+  startRobotAnimation();
   isSpeaking.value = true;
   if (!wordAudio) {
     wordAudio = uni.createInnerAudioContext();
     wordAudio.obeyMuteSwitch = false;
     wordAudio.onEnded(() => {
       isSpeaking.value = false;
-      isRobotAnimating.value = false;
     });
     wordAudio.onError(() => {
       isSpeaking.value = false;
@@ -577,8 +604,6 @@ function playCurrentWord() {
 function finishOpeningGuide() {
   if (!isGuiding.value) return;
   isGuiding.value = false;
-  isRobotAnimating.value = false;
-  speakAfterDelay(140, true);
 }
 
 function playOpeningGuideAfterDelay(delay: number) {
@@ -599,15 +624,14 @@ function playOpeningGuideAfterDelay(delay: number) {
 function playOpeningGuide() {
   openingGuidePending = false;
   isGuiding.value = true;
-  robotAnimationVersion.value += 1;
-  isRobotAnimating.value = true;
+  startRobotAnimation();
   if (!openingGuideAudio) {
     openingGuideAudio = uni.createInnerAudioContext();
     openingGuideAudio.obeyMuteSwitch = false;
     openingGuideAudio.onEnded(finishOpeningGuide);
     openingGuideAudio.onError(() => {
       isGuiding.value = false;
-      isRobotAnimating.value = false;
+      stopRobotAnimation();
       openingGuidePending = true;
     });
   }
@@ -623,7 +647,7 @@ function stopOpeningGuide() {
   }
   openingGuidePending = false;
   isGuiding.value = false;
-  isRobotAnimating.value = false;
+  stopRobotAnimation();
   openingGuideAudio?.stop();
 }
 
@@ -631,18 +655,16 @@ function speakWithSystemVoice(word: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
   isSpeaking.value = true;
-  isRobotAnimating.value = true;
+  startRobotAnimation();
   const utterance = new SpeechSynthesisUtterance(word);
   utterance.lang = 'en-US';
   utterance.rate = 0.72;
   utterance.pitch = 1.05;
   utterance.onend = () => {
     isSpeaking.value = false;
-    isRobotAnimating.value = false;
   };
   utterance.onerror = () => {
     isSpeaking.value = false;
-    isRobotAnimating.value = false;
   };
   window.speechSynthesis.speak(utterance);
 }
@@ -769,6 +791,7 @@ function restart() {
   currentRound.value = 0;
   isComplete.value = false;
   completedRounds.value = 0;
+  robotHasPlayed.value = false;
   gameStartedAt = Date.now();
   resetRound();
   playOpeningGuideAfterDelay(360);
@@ -782,13 +805,14 @@ onMounted(() => {
   gameStartedAt = Date.now();
   resetRound();
   startBackgroundMusic();
-  playOpeningGuideAfterDelay(520);
+  playOpeningGuide();
 });
 
 onUnmounted(() => {
   clearFeedbackTimer();
   clearCompletionTimer();
   stopOpeningGuide();
+  stopRobotAnimation();
   stopCompletionAudioSequence();
   if (nextTimer) clearTimeout(nextTimer);
   wordAudio?.destroy();
@@ -869,7 +893,7 @@ onUnmounted(() => {
   left: 5.4%;
   width: 10.6%;
   height: 5.1%;
-  z-index: 3;
+  z-index: 50;
 }
 
 .page-title {
@@ -1079,8 +1103,25 @@ onUnmounted(() => {
 }
 
 .robot-image {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  opacity: 0;
+}
+
+.robot-image.visible {
+  opacity: 1;
+}
+
+.robot-sprite {
+  background-repeat: no-repeat;
+  background-position: center top;
+  background-size: 100% 4300%;
+}
+
+.robot-sprite.visible {
+  animation: robot-blink 3.07s steps(42, end) both;
 }
 
 .instruction-pill {
@@ -1311,6 +1352,11 @@ onUnmounted(() => {
 
 @keyframes music-spin {
   to { transform: rotate(360deg); }
+}
+
+@keyframes robot-blink {
+  from { background-position: center top; }
+  to { background-position: center bottom; }
 }
 
 @keyframes tile-bob {
