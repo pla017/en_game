@@ -109,6 +109,19 @@
         </view>
         <view class="complete-next tap-image" @tap="goToNextGame">下一关</view>
       </view>
+
+      <view
+        v-if="isGuideVisible"
+        class="visual-guide"
+        aria-label="操作指引"
+        @tap.stop="advanceGuide"
+        @click.stop="advanceGuide"
+        @touchstart.stop="handleGuideTouch"
+        @touchend.stop="advanceGuide"
+        @mousedown.stop="handleGuideTouch"
+      >
+        <image class="visual-guide-image" :src="currentGuideImage" mode="aspectFill" />
+      </view>
     </view>
   </view>
 </template>
@@ -141,6 +154,9 @@ import flowerAudioUrl from './audio/flower.mp3';
 import openingGuideAudioUrl from './audio/opening-guide.mp3';
 import sunAudioUrl from './audio/sun.mp3';
 import treeAudioUrl from './audio/tree.mp3';
+import guideStep01Url from './assets/指引切图/画板 3-1.png';
+import guideStep02Url from './assets/指引切图/画板 3-2.png';
+import guideStep03Url from './assets/指引切图/画板 3-3.png';
 
 interface WordItem {
   word: string;
@@ -187,7 +203,9 @@ const robotAnimationVersion = ref(0);
 const activeRobotLayer = ref(0);
 const pendingRobotLayer = ref<number | null>(null);
 const robotImageUrls = ref([speakingRobotUrl, speakingRobotUrl]);
-const isGuiding = ref(false);
+const isGuiding = ref(true);
+const guideStep = ref(0);
+const isGuideVisible = ref(true);
 const isMusicEnabled = ref(true);
 const isMusicPlaying = ref(false);
 const isFinalizingRecording = ref(false);
@@ -224,8 +242,11 @@ let practiceFinalized = false;
 let speechMatched = false;
 let studyStartedAt = 0;
 let openingGuidePending = false;
+let lastGuideAdvanceAt = 0;
+const guideImages = [guideStep01Url, guideStep02Url, guideStep03Url];
 
 const currentWord = computed(() => words[currentIndex.value]);
+const currentGuideImage = computed(() => guideImages[guideStep.value]);
 function versionedRobotUrl() {
   const separator = speakingRobotUrl.includes('?') ? '&' : '?';
   return `${speakingRobotUrl}${separator}animation=${robotAnimationVersion.value}`;
@@ -317,7 +338,7 @@ function toggleBackgroundMusic() {
 }
 
 function finishOpeningGuide() {
-  if (!isGuiding.value) return;
+  if (!isGuiding.value && !isGuideVisible.value) return;
   isGuiding.value = false;
   isRobotSpeaking.value = false;
   if (openingGuideFallbackTimer) {
@@ -328,6 +349,7 @@ function finishOpeningGuide() {
     setBackgroundMusicVolume(0.12);
     return;
   }
+  if (isGuideVisible.value) return;
   if (previewTimer) clearTimeout(previewTimer);
   previewTimer = setTimeout(() => {
     previewTimer = null;
@@ -356,6 +378,38 @@ function stopOpeningGuide() {
   }
   isGuiding.value = false;
   openingGuideAudio?.stop();
+}
+
+function finishVisualGuide() {
+  isGuideVisible.value = false;
+  guideStep.value = 0;
+  if (openingGuidePending) {
+    playOpeningGuide();
+    return;
+  }
+  if (!isGuiding.value) {
+    if (previewTimer) clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => {
+      previewTimer = null;
+      startWordPreview();
+    }, 160);
+  }
+}
+
+function advanceGuide() {
+  const now = Date.now();
+  if (now - lastGuideAdvanceAt < 280) return;
+  lastGuideAdvanceAt = now;
+  if (openingGuidePending || !openingGuideAudio) playOpeningGuide();
+  if (guideStep.value < guideImages.length - 1) {
+    guideStep.value += 1;
+    return;
+  }
+  finishVisualGuide();
+}
+
+function handleGuideTouch() {
+  if (openingGuidePending || !openingGuideAudio) playOpeningGuide();
 }
 
 function canStartAudio() {
@@ -854,6 +908,9 @@ function restart() {
   isFinalizingRecording.value = false;
   canRecord.value = false;
   isComplete.value = false;
+  guideStep.value = 0;
+  isGuideVisible.value = true;
+  isGuiding.value = true;
   elapsedSeconds.value = 0;
   recordingsByWord.value = {};
   uni.setStorageSync('game03-recordings', JSON.stringify({}));
@@ -1024,6 +1081,8 @@ onUnmounted(() => {
 .complete-star-0 { animation-delay: 0.2s !important; }.complete-star-1 { animation-delay: 0.28s !important; }.complete-star-2 { animation-delay: 0.36s !important; }.complete-star-3 { animation-delay: 0.44s !important; }.complete-star-4 { animation-delay: 0.52s !important; }
 .complete-time { position: absolute; top: 75%; left: 0; width: 100%; color: #704022; font-size: 42rpx; font-weight: 800; line-height: 1; text-align: center; }
 .complete-next { position: absolute; top: 78%; left: 50%; width: 320rpx; height: 104rpx; border: 6rpx solid #b8ff51; border-radius: 30rpx; background: #65d900; box-shadow: 0 9rpx 0 #2ba900, 0 12rpx 18rpx rgba(25, 92, 0, 0.3); color: #fff; font-size: 58rpx; font-weight: 900; line-height: 92rpx; text-align: center; text-shadow: 0 4rpx 0 #399200; transform: translateX(-50%); animation: complete-next-pop 0.42s 0.6s ease both; }
+.visual-guide { position: absolute; z-index: 60; inset: 0; overflow: hidden; background: #45676a; }
+.visual-guide-image { width: 100%; height: 100%; }
 
 @keyframes center-countdown { 0% { opacity: 0; transform: scale(1.42); } 62% { opacity: 1; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
 @keyframes status-pop { from { opacity: 0; transform: translate(-50%, 8rpx) scale(0.8); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
