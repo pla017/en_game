@@ -25,10 +25,10 @@
 
     <view class="progress-wrap" aria-label="游戏进度">
       <image class="progress-bg" :src="progressBgUrl" mode="aspectFit" />
-      <view class="progress-fill-clip" :style="{ width: `${progressPercent}%` }">
+      <view class="progress-fill-clip" :style="{ width: `${progressFillPercent}%` }">
         <image class="progress-fill" :src="progressFillUrl" mode="scaleToFill" />
       </view>
-      <view class="progress-knob" :style="{ left: `${progressPercent}%` }" />
+      <view class="progress-knob" :style="{ left: `${progressMarkerPercent}%` }" />
       <text class="progress-label">{{ currentRound + 1 }} / {{ rounds.length }}</text>
     </view>
 
@@ -211,6 +211,11 @@ let openingGuideAudio: UniApp.InnerAudioContext | null = null;
 const effectAudios: Partial<Record<EffectName, UniApp.InnerAudioContext>> = {};
 
 const progressPercent = computed(() => (currentRound.value / rounds.length) * 100);
+const progressMarkerPercent = computed(() => {
+  const endpoint = (15 / 460) * 100;
+  return Math.min(100 - endpoint, Math.max(endpoint, progressPercent.value));
+});
+const progressFillPercent = computed(() => progressMarkerPercent.value);
 const formattedTime = computed(() => {
   const minutes = Math.floor(elapsedSeconds.value / 60);
   const seconds = (elapsedSeconds.value % 60).toString().padStart(2, '0');
@@ -642,18 +647,31 @@ onUnmounted(() => {
   left: 0;
   height: 42rpx;
   overflow: hidden;
+  border-radius: 999rpx 0 0 999rpx;
   transition: width 0.35s ease;
 }
 
+.progress-fill-clip::before {
+  position: absolute;
+  z-index: 0;
+  inset: 5rpx;
+  border-radius: 999rpx 0 0 999rpx;
+  background: #09dfff;
+  content: '';
+}
+
+.progress-fill { z-index: 1; width: 190rpx; }
+
 .progress-knob {
   position: absolute;
-  top: 9rpx;
-  width: 24rpx;
-  height: 24rpx;
-  border: 3rpx solid #fff;
+  z-index: 2;
+  top: 6rpx;
+  width: 30rpx;
+  height: 30rpx;
+  border: 0;
   border-radius: 50%;
-  background: #f8fbff;
-  box-shadow: 0 2rpx 4rpx rgba(29, 135, 201, 0.36);
+  background: #fff;
+  box-shadow: 0 2rpx 4rpx rgba(29, 135, 201, 0.28);
   transform: translateX(-50%);
   transition: left 0.35s ease;
 }

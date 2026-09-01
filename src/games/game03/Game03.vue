@@ -20,15 +20,10 @@
       <view class="progress-wrap" aria-label="学习进度">
         <view class="progress-track">
           <image class="progress-bg" :src="progressBgUrl" mode="aspectFit" />
-          <view class="progress-fill-clip" :style="{ width: `${progressPercent}%` }">
+          <view class="progress-fill-clip" :style="{ width: `${progressFillPercent}%` }">
             <image class="progress-fill" :src="progressFillUrl" mode="scaleToFill" />
           </view>
-          <image
-            class="progress-point"
-            :style="{ left: `${progressPercent}%` }"
-            :src="progressPointUrl"
-            mode="aspectFit"
-          />
+          <view class="progress-point" :style="{ left: `${progressMarkerPercent}%` }" />
         </view>
         <text class="progress-count">{{ currentIndex + 1 }}/{{ words.length }}</text>
       </view>
@@ -144,7 +139,6 @@ import completeStarMiddleUrl from './assets/game3_star_middle.png';
 import completeStarSmallUrl from './assets/game3_star_small.png';
 import progressBgUrl from './assets/progress_bar_bg.png';
 import progressFillUrl from './assets/progress_bar_ing.png';
-import progressPointUrl from './assets/progress_bar_point.png';
 import returnUrl from './assets/game3_return.png';
 import musicIconUrl from '../game04/assets/game4_music.png';
 import backgroundMusicUrl from './audio/background-music.mp3';
@@ -252,6 +246,11 @@ function versionedRobotUrl() {
   return `${speakingRobotUrl}${separator}animation=${robotAnimationVersion.value}`;
 }
 const progressPercent = computed(() => ((currentIndex.value + 1) / words.length) * 100);
+const progressMarkerPercent = computed(() => {
+  const endpoint = (15 / 460) * 100;
+  return Math.min(100 - endpoint, Math.max(endpoint, progressPercent.value));
+});
+const progressFillPercent = computed(() => progressMarkerPercent.value);
 const completionTime = computed(() => {
   const minutes = Math.floor(elapsedSeconds.value / 60).toString().padStart(2, '0');
   const seconds = (elapsedSeconds.value % 60).toString().padStart(2, '0');
@@ -1018,9 +1017,10 @@ onUnmounted(() => {
 .progress-wrap { position: absolute; z-index: 4; top: 14.2%; left: 22%; width: 61%; }
 .progress-track { position: relative; width: 100%; height: 42rpx; overflow: visible; }
 .progress-bg { position: absolute; inset: 0; width: 100%; height: 42rpx; }
-.progress-fill-clip { position: absolute; top: 0; left: 0; height: 42rpx; overflow: hidden; transition: width 0.35s ease; }
-.progress-fill { width: 460rpx; height: 42rpx; max-width: none; }
-.progress-point { position: absolute; top: 0; width: 42rpx; height: 42rpx; transform: translateX(-50%); transition: left 0.35s ease; }
+.progress-fill-clip { position: absolute; top: 0; left: 0; height: 42rpx; overflow: hidden; border-radius: 999rpx 0 0 999rpx; transition: width 0.35s ease; }
+.progress-fill-clip::before { position: absolute; z-index: 0; inset: 5rpx; border-radius: 999rpx 0 0 999rpx; background: #13e0d9; content: ''; }
+.progress-fill { position: relative; z-index: 1; width: 190rpx; height: 42rpx; max-width: none; }
+.progress-point { position: absolute; z-index: 2; top: 6rpx; width: 30rpx; height: 30rpx; border-radius: 50%; background: #fff; box-shadow: 0 2rpx 4rpx rgba(30, 116, 167, 0.24); transform: translateX(-50%); transition: left 0.35s ease; }
 .progress-count { display: block; margin-top: 34rpx; color: #2d94d4; font-size: 48rpx; line-height: 1; text-align: center; }
 
 .word-panel { position: absolute; z-index: 3; top: 28.8%; left: 7%; width: 86%; text-align: center; }
